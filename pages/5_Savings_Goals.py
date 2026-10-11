@@ -1,5 +1,7 @@
 import streamlit as st
 from datetime import date
+import pandas as pd
+import plotly.graph_objects as go
 
 from auth import require_login
 from database import (
@@ -16,6 +18,9 @@ from utils import (
     empty_state,
     format_currency,
     get_user_currency,
+    apply_chart_theme,
+    theme_chart_colors,
+    metric_card,
 )
 
 st.set_page_config(page_title="Savings Goals", page_icon="🏦", layout="wide")
@@ -27,7 +32,7 @@ curr = get_user_currency()
 
 page_header(
     "Savings Goals & Milestones",
-    "Define your target milestones, allocate savings, and track your completion progress.",
+    "Define your target milestones, allocate savings, track completion velocity, and stay on schedule.",
     badge_text="Goals",
     icon="🏦",
 )
@@ -80,7 +85,7 @@ with st.form("add_goal_form", clear_on_submit=True):
 section_divider()
 
 # ==================================================
-# TRACK PROGRESS
+# TRACK PROGRESS & VISUALIZE MILESTONES
 # ==================================================
 
 st.subheader("Active Savings Milestones")
@@ -94,6 +99,169 @@ if not goals:
         icon="🏦",
     )
 else:
+    total_target = sum(g[2] for g in goals)
+    total_saved = sum(g[3] for g in goals)
+    overall_pct = (total_saved / total_target * 100) if total_target > 0 else 0.0
+
+    # Summary strip for all goals
+    m_col1, m_col2, m_col3 = st.columns(3)
+    with m_col1:
+        metric_card("Total Cumulative Target", format_currency(total_target), accent="indigo", icon="🎯")
+    with m_col2:
+        metric_card("Total Amount Saved", format_currency(total_saved), accent="emerald", icon="💰")
+    with m_col3:
+        metric_card("Overall Progress", f"{overall_pct:.1f}%", accent="cyan" if overall_pct >= 50 else "amber", icon="🏁")
+
+    # --- Interactive Horizontal Bar Chart Comparing Saved vs Target ---
+    chart_names = [g[1] for g in goals]
+    chart_targets = [g[2] for g in goals]
+    chart_saved = [g[3] for g in goals]
+
+    fig_goals = go.Figure()
+    fig_goals.add_trace(
+        go.Bar(
+            y=chart_names,
+            x=chart_targets,
+            name="Target Amount",
+            orientation="h",
+            marker_color="rgba(99, 102, 241, 0.4)",
+            marker_line_color="#6366f1",
+            marker_line_width=1.5,
+            hovertemplate="<b>%{y}</b><br>Target: " + curr + "%{x:,.2f}<extra></extra>",
+        )
+    )
+    saved_bar_colors = ["#10b981" if s >= t and t > 0 else "#6366f1" for s, t in zip(chart_saved, chart_targets)]
+    fig_goals.add_trace(
+        go.Bar(
+            y=chart_names,
+            x=chart_saved,
+            name="Current Saved",
+            orientation="h",
+            marker_color=saved_bar_colors,
+            marker_line_width=0,
+            hovertemplate="<b>%{y}</b><br>Saved: " + curr + "%{x:,.2f}<extra></extra>",
+        )
+    )
+    apply_chart_theme(
+        fig_goals,
+        height=max(220, len(goals) * 45 + 90),
+        title="Savings Goals: Target vs. Current Saved",
+        x_title=f"Amount ({curr})",
+        barmode="group",
+    )
+    st.plotly_chart(fig_goals, use_container_width=True)
+
+    # ==================================================
+    # SMART SAVINGS PLANNER & FEASIBILITY ANALYSIS
+    # ==================================================
+    from database import get_transactions
+    from finance_ml import calculate_savings_plan
+
+    user_transactions = get_transactions(user_id)
+    plan = calculate_savings_plan(user_transactions, goals)
+
+    with st.expander("📊 Smart Monthly Savings Planner & Feasibility Analysis", expanded=True):
+        st.caption("Data-grounded projections based on your actual income, regular living expenses, and active goals.")
+
+        if plan["status"] == "ok":
+            p_col1, p_col2, p_col3 = st.columns(3)
+            with p_col1:
+                metric_card(
+                    "Estimated Monthly Surplus",
+                    format_currency(plan["baseline_surplus"], curr),
+                    accent="indigo" if plan["baseline_surplus"] >= 0 else "rose",
+                    icon="💵",
+                    help_text="net disposable cash flow",
+                )
+            with p_col2:
+                metric_card(
+                    "Recommended Monthly Savings",
+                    format_currency(plan["realistic_monthly_target"], curr),
+                    accent="emerald" if plan["realistic_monthly_target"] > 0 else "amber",
+                    icon="🎯",
+                    help_text="70% of safe surplus",
+                )
+            with p_col3:
+                metric_card(
+                    "Total Goals Monthly Demand",
+                    format_currency(plan["total_monthly_demand"], curr),
+                    accent="cyan" if plan["total_monthly_demand"] <= plan["realistic_monthly_target"] else "rose",
+                    icon="⏳",
+                    help_text="sum of deadline targets",
+                )
+
+            # Feasibility recommendation banner
+            if plan["feasibility"] == "deficit":
+                st.error(f"⚠️ **Cash Flow Advisory:** {plan['target_message']}")
+            elif plan["total_monthly_demand"] > plan["realistic_monthly_target"]:
+                st.warning(
+                    f"⚠️ **Tight Savings Schedule:** Your active milestones require {format_currency(plan['total_monthly_demand'], curr)}/month, "
+                    f"which exceeds your recommended safe monthly savings rate ({format_currency(plan['realistic_monthly_target'], curr)}/month). "
+                    "Consider extending target dates or reducing discretionary category spending."
+                )
+            else:
+                st.success(
+                    f"✅ **Goals Are Fully Feasible:** Your recommended savings capacity of {format_currency(plan['realistic_monthly_target'], curr)}/month "
+                    f"comfortably covers all active milestone deadlines ({format_currency(plan['total_monthly_demand'], curr)}/month)."
+                )
+
+            # Capacity ranges table
+            if plan["realistic_monthly_target"] > 0:
+                st.markdown(
+                    f"""
+                    <div style="font-size: 0.88rem; color: var(--pft-text-secondary); margin: 8px 0 12px 0;">
+                        <strong>Savings Capacity Range:</strong>
+                        &nbsp;•&nbsp; <strong>Conservative (50%):</strong> {format_currency(plan['conservative_target'], curr)}/mo
+                        &nbsp;•&nbsp; <strong>Moderate / Target (70%):</strong> {format_currency(plan['realistic_monthly_target'], curr)}/mo
+                        &nbsp;•&nbsp; <strong>Aggressive (85%):</strong> {format_currency(plan['aggressive_target'], curr)}/mo
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            # Goal-by-goal feasibility projections
+            if plan["goals_plan"]:
+                st.markdown("##### Milestone Feasibility & Estimated Timelines")
+                for gp in plan["goals_plan"]:
+                    status_lbl = gp["status"]
+                    if status_lbl == "completed":
+                        b_html = '<span class="pft-badge pft-badge-emerald">Completed 🎉</span>'
+                        t_text = "Milestone achieved!"
+                    elif status_lbl == "on_track":
+                        b_html = '<span class="pft-badge pft-badge-emerald">On Schedule</span>'
+                        t_text = f"Requires {format_currency(gp['required_per_month'], curr)}/mo over {gp['months_to_deadline']} month(s)"
+                    elif status_lbl == "tight":
+                        b_html = '<span class="pft-badge pft-badge-amber">Tight Schedule</span>'
+                        t_text = f"Requires {format_currency(gp['required_per_month'], curr)}/mo over {gp['months_to_deadline']} month(s) — close to maximum surplus"
+                    elif status_lbl == "extended_timeline_needed":
+                        b_html = '<span class="pft-badge pft-badge-rose">Extend Deadline</span>'
+                        t_text = f"Requires {format_currency(gp['required_per_month'], curr)}/mo, but safe capacity is {format_currency(plan['realistic_monthly_target'], curr)}/mo"
+                    elif status_lbl == "deficit":
+                        b_html = '<span class="pft-badge pft-badge-rose">Deficit</span>'
+                        t_text = "Cannot project timeline while cash flow is negative"
+                    else:
+                        b_html = '<span class="pft-badge pft-badge-neutral">Open-Ended</span>'
+                        est_m = gp.get("estimated_months_at_target")
+                        t_text = f"~{est_m} month(s) to reach target at recommended savings rate" if est_m else "No deadline set"
+
+                    st.markdown(
+                        f"""
+                        <div style="padding: 6px 0; border-bottom: 1px solid var(--pft-border);">
+                            <strong>{gp['name']}</strong> &nbsp; {b_html}
+                            <div style="font-size: 0.85rem; color: var(--pft-text-secondary); margin-top: 2px;">
+                                {format_currency(gp['remaining'], curr)} remaining &nbsp;•&nbsp; {t_text}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+            st.caption(f"ℹ️ {plan['assumptions']}")
+        else:
+            st.info(plan["message"])
+
+    st.markdown("### Milestone Details & Contributions")
+
     for goal_id, name, target, current, target_date in goals:
         pct = min(current / target, 1.0) if target > 0 else 0.0
         remaining = max(target - current, 0.0)
@@ -119,7 +287,7 @@ else:
             """,
             unsafe_allow_html=True,
         )
-        st.progress(pct, text=f"{pct * 100:.1f}% completed")
+        st.progress(pct)
 
         col_a, col_b, col_c = st.columns([2.5, 1, 1])
 

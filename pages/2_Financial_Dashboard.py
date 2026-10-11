@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 import plotly.express as px
 import html
 
@@ -15,6 +16,7 @@ from utils import (
     get_user_currency,
     FINANCE_COLOR_SEQUENCE,
     theme_chart_colors,
+    apply_chart_theme,
 )
 from finance_ml import (
     detect_expense_anomalies,
@@ -32,8 +34,8 @@ curr = get_user_currency()
 
 page_header(
     "Financial Dashboard & ML Insights",
-    "Deep-dive spending analysis, AI-powered forecasting, anomaly detection, and financial simulations.",
-    badge_text="Analytics",
+    "Deep-dive spending analytics, machine learning forecasting, anomaly detection, and scenario simulation.",
+    badge_text="Analytics & ML",
     icon="📊",
 )
 
@@ -49,6 +51,7 @@ if not transactions:
 
 df = pd.DataFrame(transactions, columns=["ID", "Date", "Type", "Category", "Amount", "Description"])
 df["Date"] = pd.to_datetime(df["Date"])
+df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0.0)
 chart_colors = theme_chart_colors()
 
 total_income = float(df[df["Type"] == "Income"]["Amount"].sum())
@@ -57,7 +60,7 @@ balance = total_income - total_expenses
 expense_df = df[df["Type"] == "Expense"]
 
 # ==================================================
-# FINANCIAL SUMMARY
+# FINANCIAL SUMMARY METRICS
 # ==================================================
 
 st.subheader("Financial Summary")
@@ -69,7 +72,7 @@ with sum_col2:
     metric_card("Total Expenses", format_currency(total_expenses), accent="rose", icon="📉")
 with sum_col3:
     metric_card(
-        "Current Balance",
+        "Current Net Balance",
         format_currency(balance),
         accent="indigo" if balance >= 0 else "rose",
         icon="💳",
@@ -81,74 +84,81 @@ with sum_col4:
         f"{expense_rate:.1f}%",
         accent="cyan" if expense_rate < 70 else "amber",
         icon="📊",
-        help_text="of income spent",
+        help_text="of total earnings",
     )
 
 section_divider()
 
 # ==================================================
-# SPENDING ANALYSIS
+# SPENDING ANALYSIS & INTERACTIVE CHARTS
 # ==================================================
 
-st.subheader("Spending Analysis")
+st.subheader("Category Spending Analytics")
 
 if expense_df.empty:
     st.info("Add an expense transaction to view category distribution and breakdown charts.")
 else:
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([1.1, 1.2])
 
     category_expenses = (
         expense_df.groupby("Category")["Amount"].sum().reset_index().sort_values("Amount", ascending=False)
     )
 
     with col1:
-        fig_category = px.pie(
-            category_expenses,
-            names="Category",
-            values="Amount",
-            title="Expense Distribution by Category",
-            color_discrete_sequence=FINANCE_COLOR_SEQUENCE,
-            hole=0.55,
+        # Donut Chart with Center Annotation
+        fig_category = go.Figure(
+            data=[
+                go.Pie(
+                    labels=category_expenses["Category"],
+                    values=category_expenses["Amount"],
+                    hole=0.6,
+                    marker=dict(
+                        colors=FINANCE_COLOR_SEQUENCE,
+                        line=dict(color=chart_colors["marker_line"], width=2),
+                    ),
+                    textposition="inside",
+                    textinfo="percent",
+                    hovertemplate="<b>%{label}</b><br>Spent: " + curr + "%{value:,.2f}<br>Share: %{percent}<extra></extra>",
+                )
+            ]
         )
-        fig_category.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=chart_colors["font"]),
-            title_font=dict(size=16, color=chart_colors["title"]),
-            legend=dict(font=dict(color=chart_colors["legend"])),
-            margin=dict(l=20, r=20, t=60, b=20),
+        fig_category.add_annotation(
+            text=f"<b>{format_currency(total_expenses)}</b><br><span style='font-size:11px; color:{chart_colors['axis']};'>Total Outflow</span>",
+            x=0.5,
+            y=0.5,
+            font=dict(size=14, color=chart_colors["font"]),
+            showarrow=False,
         )
-        fig_category.update_traces(
-            textposition="inside",
-            textinfo="percent",
-            marker=dict(line=dict(color=chart_colors["marker_line"], width=2)),
-        )
+        apply_chart_theme(fig_category, height=360, title="Expense Distribution by Category")
         st.plotly_chart(fig_category, use_container_width=True)
 
     with col2:
-        fig_bar = px.bar(
-            category_expenses,
-            x="Category",
-            y="Amount",
-            color="Category",
+        # Category Spend Horizontal/Vertical Bar Chart
+        fig_bar = go.Figure(
+            data=[
+                go.Bar(
+                    x=category_expenses["Category"],
+                    y=category_expenses["Amount"],
+                    marker=dict(
+                        color=FINANCE_COLOR_SEQUENCE[: len(category_expenses)],
+                        line=dict(width=0),
+                    ),
+                    hovertemplate="<b>%{x}</b><br>Total Spent: " + curr + "%{y:,.2f}<extra></extra>",
+                )
+            ]
+        )
+        apply_chart_theme(
+            fig_bar,
+            height=360,
             title="Total Spend per Category",
-            color_discrete_sequence=FINANCE_COLOR_SEQUENCE,
+            x_title="Category",
+            y_title=f"Amount ({curr})",
+            show_legend=False,
         )
-        fig_bar.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color=chart_colors["font"]),
-            title_font=dict(size=16, color=chart_colors["title"]),
-            xaxis=dict(title="Category", showgrid=False, color=chart_colors["axis"]),
-            yaxis=dict(title=f"Amount ({curr})", gridcolor=chart_colors["grid"], color=chart_colors["axis"]),
-            showlegend=False,
-            margin=dict(l=20, r=20, t=60, b=20),
-        )
-        fig_bar.update_traces(marker_line_width=0)
         st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==================================================
-# SMART FINANCIAL INSIGHTS & BENCHMARKS
+# SMART FINANCIAL BENCHMARKS & STATUS
 # ==================================================
 
 if total_income > 0:
@@ -171,7 +181,7 @@ if total_income > 0:
             f"{expense_percentage:.1f}%",
             accent="cyan" if expense_percentage < 60 else "amber",
             icon="🔥",
-            help_text="of total income consumed",
+            help_text="of income consumed",
         )
     with ins_col2:
         metric_card(
@@ -187,7 +197,7 @@ if total_income > 0:
             format_currency(balance),
             accent="emerald" if balance >= 0 else "rose",
             icon="💰",
-            help_text="remaining after expenses",
+            help_text="remaining unspent",
         )
 
     # Contextual recommendation
@@ -218,7 +228,7 @@ section_divider()
 # ==================================================
 
 st.header("🤖 Machine Learning & Predictive Insights")
-st.caption("Heuristics and statistical models executed locally on your authenticated data.")
+st.caption("Explainable statistical models and deterministic heuristics computed locally on your authenticated data.")
 
 budgets = get_budgets(user_id)
 goals = get_savings_goals(user_id)
@@ -232,21 +242,31 @@ tool_col1, tool_col2 = st.columns(2)
 with tool_col1:
     st.subheader("🔮 Next-Month Expense Forecasting")
     if prediction["status"] == "ok":
+        rel = prediction.get("reliability", "moderate")
+        if rel == "high":
+            rel_badge = '<span class="pft-badge pft-badge-emerald">High Confidence</span>'
+        elif rel == "low":
+            rel_badge = '<span class="pft-badge pft-badge-amber">Low Confidence (Sparse Data)</span>'
+        else:
+            rel_badge = '<span class="pft-badge pft-badge-indigo">Moderate Confidence</span>'
+
         metric_card(
             f"Forecasted Total ({prediction['month']})",
             format_currency(prediction["amount"]),
             accent="indigo",
             icon="📈",
+            help_text=f"{prediction.get('history_months', 0)} months analyzed",
         )
+        st.markdown(f"<div style='margin: 6px 0;'>{rel_badge} &nbsp; <span style='font-size: 0.85rem; color: var(--pft-text-secondary);'>{prediction.get('reliability_message', '')}</span></div>", unsafe_allow_html=True)
         st.caption(f"ℹ️ {prediction['explanation']}")
         if prediction.get("mae") is not None:
             st.caption(f"Model holdout Mean Absolute Error: ~{format_currency(prediction['mae'])}.")
         if prediction.get("category_predictions"):
-            with st.expander("Category-wise Forecast Breakdown"):
+            with st.expander("Category-wise Forecast Breakdown", expanded=False):
                 for category, amount in prediction["category_predictions"].items():
                     st.write(f"• **{category}:** {format_currency(amount)}")
     else:
-        st.info(prediction["message"])
+        st.info(f"ℹ️ {prediction['message']}")
 
 with tool_col2:
     st.subheader("🩺 Financial Health Score")
@@ -273,9 +293,17 @@ st.subheader("⚠️ Unusual Spending Anomaly Detection")
 if anomalies["status"] != "ok":
     st.info(anomalies["message"])
 elif anomalies["anomalies"]:
-    st.warning(f"Detected **{len(anomalies['anomalies'])}** statistically unusual transaction(s) using Median Absolute Deviation (MAD).")
+    st.warning(
+        f"Detected **{len(anomalies['anomalies'])}** statistically unusual transaction(s) using Median Absolute Deviation (MAD). "
+        "These entries are flagged for your review to verify accuracy; they are not classified as fraud."
+    )
     st.caption(anomalies["explanation"])
-    st.dataframe(pd.DataFrame(anomalies["anomalies"]), use_container_width=True, hide_index=True)
+    anom_df = pd.DataFrame(anomalies["anomalies"])
+    if "amount" in anom_df.columns:
+        anom_df["amount"] = anom_df["amount"].apply(lambda v: format_currency(v, curr))
+    rename_cols = {"date": "Date", "category": "Category", "amount": "Amount", "severity": "Severity", "reason": "Detection Rationale"}
+    display_cols = [c for c in ["date", "category", "amount", "severity", "reason"] if c in anom_df.columns]
+    st.dataframe(anom_df[display_cols].rename(columns=rename_cols), use_container_width=True, hide_index=True)
 else:
     st.success("✅ No anomalous or irregular spending spikes detected in your categories.")
 
