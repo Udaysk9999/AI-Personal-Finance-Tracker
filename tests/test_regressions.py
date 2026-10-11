@@ -46,14 +46,21 @@ def test_savings_goal_add_wrong_arg_count_raises():
 
 def test_ai_advisor_model_name_is_valid():
     """Regression: the model name was 'gemini-3.6-flash' which doesn't exist.
-    Verify the fixed source code references a real model."""
-    import ast
-    source_path = Path(__file__).resolve().parent.parent / "pages" / "6_AI_Financial_Advisor.py"
-    source = source_path.read_text(encoding="utf-8")
-    # The old invalid model should not appear
-    assert "gemini-3.6-flash" not in source, "Invalid model name still present"
-    # The replacement model should appear (gemini-3.8-flash is the active live model in Google API)
-    assert ("gemini-3.8-flash" in source or "gemini-2.0-flash" in source), "Expected model name not found"
+    Verify the fixed source code references a real model in the page or engine module."""
+    source_page = (Path(__file__).resolve().parent.parent / "pages" / "6_AI_Financial_Advisor.py").read_text(encoding="utf-8")
+    engine_path = Path(__file__).resolve().parent.parent / "advisor_engine.py"
+    source_engine = engine_path.read_text(encoding="utf-8") if engine_path.exists() else ""
+
+    # The old invalid model should not appear in either file
+    assert "gemini-3.6-flash" not in source_page, "Invalid model name still present in advisor page"
+    assert "gemini-3.6-flash" not in source_engine, "Invalid model name still present in advisor_engine.py"
+
+    # A valid model name must appear in the page or in the engine module (via DEFAULT_GEMINI_MODEL)
+    valid_models = ("gemini-3.8-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash")
+    combined_source = source_page + source_engine
+    assert any(m in combined_source for m in valid_models), (
+        f"None of the expected valid model names {valid_models} found in advisor page or engine"
+    )
 
 
 def test_ai_advisor_uses_multi_turn_history():
