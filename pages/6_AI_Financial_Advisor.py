@@ -37,12 +37,12 @@ page_header(
 )
 
 st.markdown(
-    """<div class="ai-disclaimer">
-        <strong>🛡️ Privacy & Reliability Notice:</strong> The advisor operates strictly on aggregated summaries
-        of your real transactions, budgets, and savings targets (no account numbers or personal identities).
-        Calculations for balances, limits, and timelines are computed deterministically before reaching the AI.
-        Gemini is used to synthesize insights, explain trade-offs, and generate actionable recommendations.
-    </div>""",
+    '<div class="ai-disclaimer">'
+    '<strong>🛡️ Privacy & Reliability Notice:</strong> The advisor operates strictly on aggregated summaries '
+    'of your real transactions, budgets, and savings targets (no account numbers or personal identities). '
+    'Calculations for balances, limits, and timelines are computed deterministically before reaching the AI. '
+    'Gemini is used to synthesize insights, explain trade-offs, and generate actionable recommendations.'
+    '</div>',
     unsafe_allow_html=True,
 )
 

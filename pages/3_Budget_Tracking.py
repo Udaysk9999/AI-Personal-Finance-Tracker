@@ -207,14 +207,12 @@ else:
         with col_a:
             over_text = f" — <span style='color: #f43f5e; font-weight: 600;'>over by {format_currency(spent - limit)}</span>" if over else f" — {format_currency(limit - spent)} remaining"
             st.markdown(
-                f"""
-                <div style="margin-bottom: 6px;">
-                    <span style="font-weight: 700; font-size: 1.05rem;">{category}</span> &nbsp; {badge_html}
-                    <div style="font-size: 0.88rem; color: var(--pft-text-secondary); margin-top: 2px;">
-                        {format_currency(spent)} spent of {format_currency(limit)} budgeted ({pct * 100:.1f}%){over_text}
-                    </div>
-                </div>
-                """,
+                f'<div style="margin-bottom: 6px;">'
+                f'<span style="font-weight: 700; font-size: 1.05rem;">{category}</span> &nbsp; {badge_html}'
+                f'<div style="font-size: 0.88rem; color: var(--pft-text-secondary); margin-top: 2px;">'
+                f'{format_currency(spent)} spent of {format_currency(limit)} budgeted ({pct * 100:.1f}%){over_text}'
+                f'</div>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
             st.progress(pct)

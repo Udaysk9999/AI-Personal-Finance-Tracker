@@ -61,12 +61,34 @@ def test_financial_health_score():
 
 
 def test_simulate_finances():
-    result = simulate_finances(
+    # 1. Baseline without changes
+    baseline = simulate_finances(
+        alice_transactions,
+        [(1, "Fund", 100000.0, 20000.0, None)],
+        extra_monthly_saving=0,
+    )
+    assert baseline["difference"] == 0.0
+
+    # 2. Extra saving only
+    result_saving = simulate_finances(
         alice_transactions,
         [(1, "Fund", 100000.0, 20000.0, None)],
         extra_monthly_saving=5000,
     )
-    assert result["difference"] > 0
+    assert result_saving["current_surplus"] == baseline["current_surplus"]
+    assert result_saving["difference"] == 5000.0
+    assert result_saving["simulated_surplus"] == baseline["current_surplus"] + 5000.0
+
+    # 3. Category reduction
+    result_cut = simulate_finances(
+        alice_transactions,
+        [(1, "Fund", 100000.0, 20000.0, None)],
+        category_reduction="Food",
+        reduction_percent=20.0,
+    )
+    assert result_cut["current_surplus"] == baseline["current_surplus"]
+    assert result_cut["difference"] > 0
+    assert result_cut["simulated_surplus"] > baseline["current_surplus"]
 
 
 def test_suggest_category():

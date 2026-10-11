@@ -329,13 +329,13 @@ with sim_col2:
 
 sim_metric_col1, sim_metric_col2 = st.columns(2)
 with sim_metric_col1:
-    metric_card("Current Monthly Baseline Surplus", format_currency(simulation["current_surplus"]), accent="indigo")
+    metric_card("Current Monthly Baseline Surplus", format_currency(simulation["current_surplus"], curr), accent="indigo")
 with sim_metric_col2:
     diff_val = simulation["difference"]
     metric_card(
         "Simulated Monthly Surplus",
-        format_currency(simulation["simulated_surplus"]),
-        delta=f"+{format_currency(diff_val)}" if diff_val > 0 else None,
+        format_currency(simulation["simulated_surplus"], curr),
+        delta=f"+{format_currency(diff_val, curr)}" if diff_val > 0 else None,
         accent="emerald",
         help_text="extra monthly gain",
     )

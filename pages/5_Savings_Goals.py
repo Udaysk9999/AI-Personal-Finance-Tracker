@@ -208,14 +208,12 @@ else:
             # Capacity ranges table
             if plan["realistic_monthly_target"] > 0:
                 st.markdown(
-                    f"""
-                    <div style="font-size: 0.88rem; color: var(--pft-text-secondary); margin: 8px 0 12px 0;">
-                        <strong>Savings Capacity Range:</strong>
-                        &nbsp;•&nbsp; <strong>Conservative (50%):</strong> {format_currency(plan['conservative_target'], curr)}/mo
-                        &nbsp;•&nbsp; <strong>Moderate / Target (70%):</strong> {format_currency(plan['realistic_monthly_target'], curr)}/mo
-                        &nbsp;•&nbsp; <strong>Aggressive (85%):</strong> {format_currency(plan['aggressive_target'], curr)}/mo
-                    </div>
-                    """,
+                    f'<div style="font-size: 0.88rem; color: var(--pft-text-secondary); margin: 8px 0 12px 0;">'
+                    f'<strong>Savings Capacity Range:</strong> '
+                    f'&nbsp;•&nbsp; <strong>Conservative (50%):</strong> {format_currency(plan["conservative_target"], curr)}/mo '
+                    f'&nbsp;•&nbsp; <strong>Moderate / Target (70%):</strong> {format_currency(plan["realistic_monthly_target"], curr)}/mo '
+                    f'&nbsp;•&nbsp; <strong>Aggressive (85%):</strong> {format_currency(plan["aggressive_target"], curr)}/mo'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
 
@@ -245,14 +243,12 @@ else:
                         t_text = f"~{est_m} month(s) to reach target at recommended savings rate" if est_m else "No deadline set"
 
                     st.markdown(
-                        f"""
-                        <div style="padding: 6px 0; border-bottom: 1px solid var(--pft-border);">
-                            <strong>{gp['name']}</strong> &nbsp; {b_html}
-                            <div style="font-size: 0.85rem; color: var(--pft-text-secondary); margin-top: 2px;">
-                                {format_currency(gp['remaining'], curr)} remaining &nbsp;•&nbsp; {t_text}
-                            </div>
-                        </div>
-                        """,
+                        f'<div style="padding: 6px 0; border-bottom: 1px solid var(--pft-border);">'
+                        f'<strong>{gp["name"]}</strong> &nbsp; {b_html}'
+                        f'<div style="font-size: 0.85rem; color: var(--pft-text-secondary); margin-top: 2px;">'
+                        f'{format_currency(gp["remaining"], curr)} remaining &nbsp;•&nbsp; {t_text}'
+                        f'</div>'
+                        f'</div>',
                         unsafe_allow_html=True,
                     )
 

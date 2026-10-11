@@ -637,17 +637,13 @@ def page_header(title: str, subtitle: str = "", badge_text: str = None, icon: st
     """
     badge_html = f'<span class="pft-badge pft-badge-indigo" style="margin-left: auto;">{badge_text}</span>' if badge_text else ""
     icon_prefix = f'<span style="opacity: 0.9;">{icon}</span> ' if icon else ""
+    sub_html = f'<p class="pft-header-sub">{subtitle}</p>' if subtitle else ""
     
     st.markdown(
-        f"""
-        <div class="pft-header">
-            <div class="pft-header-title">
-                {icon_prefix}{title}
-                {badge_html}
-            </div>
-            {f'<p class="pft-header-sub">{subtitle}</p>' if subtitle else ''}
-        </div>
-        """,
+        f'<div class="pft-header">'
+        f'<div class="pft-header-title">{icon_prefix}{title}{badge_html}</div>'
+        f'{sub_html}'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
@@ -680,16 +676,14 @@ def metric_card(label: str, value: str, delta: str = None, accent: str = "indigo
     icon_html = f'<div class="pft-stat-icon">{icon}</div>' if icon else ""
 
     st.markdown(
-        f"""
-        <div class="pft-stat-card accent-{accent}">
-            <div class="pft-stat-header">
-                <span class="pft-stat-label">{html.escape(label)}</span>
-                {icon_html}
-            </div>
-            <div class="pft-stat-value">{html.escape(str(value))}</div>
-            {delta_html}
-        </div>
-        """,
+        f'<div class="pft-stat-card accent-{accent}">'
+        f'<div class="pft-stat-header">'
+        f'<span class="pft-stat-label">{html.escape(label)}</span>'
+        f'{icon_html}'
+        f'</div>'
+        f'<div class="pft-stat-value">{html.escape(str(value))}</div>'
+        f'{delta_html}'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
@@ -697,13 +691,11 @@ def metric_card(label: str, value: str, delta: str = None, accent: str = "indigo
 def empty_state(title: str, description: str, icon: str = "📊"):
     """Renders a clean empty-state message with guidance."""
     st.markdown(
-        f"""
-        <div class="pft-empty-state">
-            <div class="pft-empty-icon">{icon}</div>
-            <div class="pft-empty-title">{html.escape(title)}</div>
-            <div class="pft-empty-desc">{html.escape(description)}</div>
-        </div>
-        """,
+        f'<div class="pft-empty-state">'
+        f'<div class="pft-empty-icon">{icon}</div>'
+        f'<div class="pft-empty-title">{html.escape(title)}</div>'
+        f'<div class="pft-empty-desc">{html.escape(description)}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 

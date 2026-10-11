@@ -580,20 +580,34 @@ def financial_health_score(transactions, budgets, goals) -> dict[str, Any]:
 def simulate_finances(transactions, goals, extra_monthly_saving=0.0, category_reduction=None, reduction_percent=0.0) -> dict[str, Any]:
     frame = transactions_frame(transactions)
     if frame.empty:
-        income = expenses = 0.0
+        baseline_income = baseline_expenses = 0.0
     else:
         frame["Month"] = frame["Date"].dt.to_period("M")
         months = max(1, int(frame["Month"].nunique()))
-        income = float(frame.loc[frame["Type"] == "Income", "Amount"].sum()) / months
-        expenses = float(frame.loc[frame["Type"] == "Expense", "Amount"].sum()) / months
-    if category_reduction:
-        category_expenses = float(frame.loc[(frame["Type"] == "Expense") & (frame["Category"] == category_reduction), "Amount"].sum()) / max(1, int(frame["Month"].nunique()))
-        expenses = max(0.0, expenses - category_expenses * max(0.0, min(100.0, reduction_percent)) / 100.0)
-    current_surplus = income - expenses
-    simulated_surplus = income - expenses + max(0.0, extra_monthly_saving)
+        baseline_income = float(frame.loc[frame["Type"] == "Income", "Amount"].sum()) / months
+        baseline_expenses = float(frame.loc[frame["Type"] == "Expense", "Amount"].sum()) / months
+
+    current_surplus = baseline_income - baseline_expenses
+
+    category_savings = 0.0
+    if category_reduction and not frame.empty:
+        cat_total = float(frame.loc[(frame["Type"] == "Expense") & (frame["Category"] == category_reduction), "Amount"].sum())
+        monthly_cat_expense = cat_total / max(1, int(frame["Month"].nunique()))
+        category_savings = monthly_cat_expense * max(0.0, min(100.0, float(reduction_percent))) / 100.0
+
+    simulated_expenses = max(0.0, baseline_expenses - category_savings)
+    simulated_surplus = baseline_income - simulated_expenses + max(0.0, float(extra_monthly_saving))
+    difference = simulated_surplus - current_surplus
+
     goal_estimates = []
     for _, name, target, current, _ in goals:
         remaining = max(0.0, float(target) - float(current))
         months = None if simulated_surplus <= 0 else int((remaining + simulated_surplus - 1) // simulated_surplus)
         goal_estimates.append({"name": name, "remaining": remaining, "months": months})
-    return {"current_surplus": current_surplus, "simulated_surplus": simulated_surplus, "difference": simulated_surplus - current_surplus, "goal_estimates": goal_estimates}
+
+    return {
+        "current_surplus": current_surplus,
+        "simulated_surplus": simulated_surplus,
+        "difference": difference,
+        "goal_estimates": goal_estimates,
+    }
