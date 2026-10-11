@@ -5,6 +5,7 @@ budget warnings, and Gemini API query orchestration.
 Grounded in authenticated user data only. Preserves strict user isolation.
 """
 
+import re
 from datetime import date, datetime
 import os
 from pathlib import Path
@@ -28,39 +29,93 @@ ESSENTIAL_CATEGORIES = {"Rent", "Bills", "Healthcare", "Education"}
 
 def load_gemini_api_key() -> str | None:
     """
-    Safely retrieve the Gemini API key from environment, Streamlit secrets, or .env file.
+    Safely retrieve the Gemini API key from session state, environment, Streamlit secrets, or .env file.
     Does NOT print, log, or leak the key.
     """
-    # 1. Environment variable
-    key = os.environ.get("GEMINI_API_KEY")
-    if key and key.strip():
-        return key.strip()
-
-    # 2. Streamlit secrets (lazy import so advisor_engine works outside Streamlit)
+    # 1. Streamlit session_state (user entered in UI)
     try:
         import streamlit as _st
-        if hasattr(_st, "secrets") and "GEMINI_API_KEY" in _st.secrets:
-            key = _st.secrets["GEMINI_API_KEY"]
-            if key and str(key).strip():
-                return str(key).strip()
+        if hasattr(_st, "session_state"):
+            for k in ("gemini_api_key", "GEMINI_API_KEY", "google_api_key", "GOOGLE_API_KEY", "user_gemini_key"):
+                val = _st.session_state.get(k)
+                if val and isinstance(val, str) and val.strip():
+                    return val.strip()
     except Exception:
         pass
 
-    # 3. .env file in project root or current working directory
-    for search_dir in (Path.cwd(), Path(__file__).resolve().parent):
-        env_file = search_dir / ".env"
-        if env_file.exists():
+    # 2. Environment variables
+    for env_var in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "gemini_api_key", "google_api_key", "GEMINI_KEY"):
+        val = os.environ.get(env_var)
+        if val and val.strip():
+            return val.strip()
+
+    # 3. Streamlit secrets (Streamlit Community Cloud or local .streamlit/secrets.toml)
+    try:
+        import streamlit as _st
+        if hasattr(_st, "secrets"):
+            # Check direct key variations
+            for k in ("GEMINI_API_KEY", "gemini_api_key", "GOOGLE_API_KEY", "google_api_key", "GEMINI_KEY", "gemini_key", "api_key", "API_KEY"):
+                try:
+                    if k in _st.secrets:
+                        val = _st.secrets[k]
+                        if val and str(val).strip():
+                            return str(val).strip()
+                except Exception:
+                    pass
+
+            # Check nested sections: [gemini], [google], [secrets], [ai]
+            for section in ("gemini", "GEMINI", "google", "GOOGLE", "secrets", "SECRETS", "ai", "AI"):
+                try:
+                    if section in _st.secrets:
+                        sec_obj = _st.secrets[section]
+                        for subk in ("api_key", "API_KEY", "gemini_api_key", "GEMINI_API_KEY", "key", "KEY"):
+                            if subk in sec_obj and sec_obj[subk]:
+                                return str(sec_obj[subk]).strip()
+                except Exception:
+                    pass
+
+            # Fallback: scan all key-value pairs in st.secrets
             try:
-                for line in env_file.read_text(encoding="utf-8").splitlines():
-                    line = line.strip()
-                    if line.startswith("GEMINI_API_KEY=") or line.startswith("GEMINI_API_KEY ="):
-                        _, val = line.split("=", 1)
-                        val = val.strip().strip("'\"")
-                        if val:
-                            os.environ["GEMINI_API_KEY"] = val
-                            return val
+                for k, v in _st.secrets.items():
+                    if isinstance(v, str) and v.strip():
+                        k_lower = str(k).lower()
+                        if "gemini" in k_lower or "google" in k_lower or "api_key" in k_lower or k_lower == "key":
+                            return v.strip()
             except Exception:
                 pass
+    except Exception:
+        pass
+
+    # 4. .env file or .streamlit/secrets.toml in project root or current working directory
+    key_pattern = re.compile(
+        r"^\s*(?:GEMINI_API_KEY|GOOGLE_API_KEY|gemini_api_key|google_api_key|GEMINI_KEY|api_key)\s*[:=]\s*['\"]?([^'\"#\r\n]+)['\"]?",
+        re.IGNORECASE,
+    )
+    raw_key_pattern = re.compile(r"^\s*(AIzaSy[A-Za-z0-9_-]{20,}|AQ\.[A-Za-z0-9_-]{20,})\s*$")
+
+    for search_dir in (Path.cwd(), Path(__file__).resolve().parent):
+        for fname in (".env", ".streamlit/secrets.toml"):
+            cand = search_dir / fname
+            if cand.exists() and cand.is_file():
+                try:
+                    for line in cand.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        m = key_pattern.match(line)
+                        if m:
+                            val = m.group(1).strip()
+                            if val:
+                                os.environ["GEMINI_API_KEY"] = val
+                                return val
+                        m_raw = raw_key_pattern.match(line)
+                        if m_raw:
+                            val = m_raw.group(1).strip()
+                            if val:
+                                os.environ["GEMINI_API_KEY"] = val
+                                return val
+                except Exception:
+                    pass
 
     return None
 

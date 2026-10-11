@@ -53,15 +53,71 @@ st.markdown(
 api_key = load_gemini_api_key()
 
 if not api_key:
-    st.warning(
-        "**Gemini API Key Required**\n\n"
-        "To enable your AI Financial Advisor, please configure your API key by doing one of the following:\n"
-        "- Add `GEMINI_API_KEY=\"your_key_here\"` to the `.env` file in the project root.\n"
-        "- Or set the `GEMINI_API_KEY` environment variable in your terminal.\n"
-        "- Or add `GEMINI_API_KEY = \"...\"` to `.streamlit/secrets.toml`.\n\n"
-        "👉 You can obtain a free Gemini API key (no credit card required) at [Google AI Studio](https://aistudio.google.com/app/apikey)."
+    st.markdown("### 🔑 Connect Your Gemini API Key")
+    st.info(
+        "To enable your personalized AI Financial Advisor, please connect your Google Gemini API key. "
+        "You can enter it directly below for this session, or configure it permanently in your deployment settings."
     )
+
+    with st.container():
+        st.markdown("**Enter Gemini API Key for this Session:**")
+        key_col, btn_col = st.columns([3, 1])
+        with key_col:
+            user_input_key = st.text_input(
+                "Gemini API Key",
+                type="password",
+                placeholder="Paste your Gemini API key (e.g. AQ... or AIza...)",
+                label_visibility="collapsed",
+                key="inline_gemini_key_input",
+            )
+        with btn_col:
+            connect_btn = st.button("🚀 Connect Advisor", type="primary", use_container_width=True)
+
+        if connect_btn and user_input_key.strip():
+            cleaned = user_input_key.strip().strip("'\"")
+            st.session_state["gemini_api_key"] = cleaned
+            os.environ["GEMINI_API_KEY"] = cleaned
+            try:
+                from pathlib import Path
+                secrets_dir = Path(".streamlit")
+                secrets_dir.mkdir(parents=True, exist_ok=True)
+                secrets_path = secrets_dir / "secrets.toml"
+                secrets_path.write_text(f'GEMINI_API_KEY = "{cleaned}"\n', encoding="utf-8")
+            except Exception:
+                pass
+            st.success("✅ Gemini API Key connected! Initializing your advisor...")
+            st.rerun()
+
+    with st.expander("☁️ Setting up permanently on Streamlit Community Cloud (Advanced Settings)", expanded=True):
+        st.markdown(
+            """
+            If you deployed this app to **Streamlit Community Cloud**, configure your secret in the cloud dashboard:
+
+            1. Go to your app dashboard at [share.streamlit.io](https://share.streamlit.io)
+            2. Click the **3 dots (`⋮`)** next to your app → **Settings** → **Secrets** (or in **Advanced Settings** when deploying)
+            3. Paste the following exact TOML format (make sure to include `GEMINI_API_KEY = ` and quotes):
+            ```toml
+            GEMINI_API_KEY = "your_actual_api_key_here"
+            ```
+            > ⚠️ **Common Mistake:** Do not just paste the bare key by itself without `GEMINI_API_KEY = "..."`! TOML format requires the variable name and quotation marks.
+            4. Click **Save**, then click **Reboot App** if the app does not reload automatically.
+
+            👉 You can get a free Gemini API key anytime at [Google AI Studio](https://aistudio.google.com/app/apikey).
+            """
+        )
     st.stop()
+
+# Add sidebar indicator and management for active key
+with st.sidebar.expander("⚙️ Gemini AI Advisor", expanded=False):
+    st.markdown("🟢 **Status:** Connected")
+    masked = "••••••••" + (api_key[-4:] if len(api_key) > 4 else "")
+    st.caption(f"Key: `{masked}`")
+    st.caption(f"Model: `{DEFAULT_GEMINI_MODEL}`")
+    if st.button("Change / Disconnect Key", key="disconnect_key_btn", use_container_width=True):
+        st.session_state.pop("gemini_api_key", None)
+        st.session_state.pop("GEMINI_API_KEY", None)
+        os.environ.pop("GEMINI_API_KEY", None)
+        st.rerun()
 
 try:
     from google import genai
