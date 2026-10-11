@@ -133,57 +133,62 @@ except ImportError:
 # BUILD REAL FINANCIAL DATA SNAPSHOT
 # ==================================================
 
-ctx = build_financial_context(user_id, curr=curr)
+# ==================================================
+# BUILD REAL FINANCIAL DATA SNAPSHOT
+# ==================================================
 
-if not ctx.get("has_data"):
-    empty_state(
-        "No Transactions Recorded Yet",
-        "Record income or expenses on the Transaction Management page first so the advisor has real numbers to evaluate.",
-        icon="💳",
-    )
-    st.stop()
+ctx = build_financial_context(user_id, curr=curr)
+has_data = ctx.get("has_data", False)
 
 data_summary = format_context_for_prompt(ctx)
 system_instruction = get_advisor_system_instruction(curr=curr, data_summary=data_summary)
 
-# Display deterministic financial summary cards
-st.subheader("Financial Snapshot Grounding the Advisor")
-sn_col1, sn_col2, sn_col3, sn_col4 = st.columns(4)
-with sn_col1:
-    metric_card(
-        "Total Income",
-        format_currency(ctx["total_income"], curr),
-        accent="emerald",
-        icon="📈",
-        help_text=f"Month: {format_currency(ctx['current_month_income'], curr)}",
-    )
-with sn_col2:
-    metric_card(
-        "Total Expenses",
-        format_currency(ctx["total_expenses"], curr),
-        accent="rose",
-        icon="📉",
-        help_text=f"Month: {format_currency(ctx['current_month_expense'], curr)}",
-    )
-with sn_col3:
-    metric_card(
-        "Net Balance",
-        format_currency(ctx["net_balance"], curr),
-        accent="indigo" if ctx["net_balance"] >= 0 else "rose",
-        icon="💳",
-        help_text=f"Month Surplus: {format_currency(ctx['current_month_net'], curr)}",
-    )
-with sn_col4:
-    metric_card(
-        "Savings Rate",
-        f"{ctx['savings_rate']:.1f}%",
-        accent="cyan" if ctx["savings_rate"] >= 20 else "amber",
-        icon="🎯",
-        help_text=f"This Month: {ctx['current_month_savings_rate']:.1f}%",
-    )
+if has_data:
+    # Display deterministic financial summary cards
+    st.subheader("Financial Snapshot Grounding the Advisor")
+    sn_col1, sn_col2, sn_col3, sn_col4 = st.columns(4)
+    with sn_col1:
+        metric_card(
+            "Total Income",
+            format_currency(ctx["total_income"], curr),
+            accent="emerald",
+            icon="📈",
+            help_text=f"Month: {format_currency(ctx['current_month_income'], curr)}",
+        )
+    with sn_col2:
+        metric_card(
+            "Total Expenses",
+            format_currency(ctx["total_expenses"], curr),
+            accent="rose",
+            icon="📉",
+            help_text=f"Month: {format_currency(ctx['current_month_expense'], curr)}",
+        )
+    with sn_col3:
+        metric_card(
+            "Net Balance",
+            format_currency(ctx["net_balance"], curr),
+            accent="indigo" if ctx["net_balance"] >= 0 else "rose",
+            icon="💳",
+            help_text=f"Month Surplus: {format_currency(ctx['current_month_net'], curr)}",
+        )
+    with sn_col4:
+        metric_card(
+            "Savings Rate",
+            f"{ctx['savings_rate']:.1f}%",
+            accent="cyan" if ctx["savings_rate"] >= 20 else "amber",
+            icon="🎯",
+            help_text=f"This Month: {ctx['current_month_savings_rate']:.1f}%",
+        )
 
-with st.expander("🔍 View deterministic financial data supplied to the advisor", expanded=False):
-    st.markdown("```text\n" + data_summary + "\n```")
+    with st.expander("🔍 View deterministic financial data supplied to the advisor", expanded=False):
+        st.markdown("```text\n" + data_summary + "\n```")
+else:
+    st.info(
+        "💡 **General Financial Advisory Mode:** No transactions are recorded yet in this account. "
+        "You can chat with your AI Advisor below for general financial guidance, budgeting rules (like 50/30/20), "
+        "and savings advice! Once you record transactions in **Transaction Management**, the advisor will automatically "
+        "tailor recommendations to your exact spending and income."
+    )
 
 # ==================================================
 # CHAT INTERFACE & CONVERSATION HISTORY
@@ -210,19 +215,33 @@ for msg in st.session_state[history_key]:
 
 # Quick example question pills grounded in core advisor capabilities
 st.caption("Common inquiries (click to ask):")
-q_rows = [
-    [
-        "Analyze my spending this month.",
-        "Which category is costing me the most?",
-        "Where can I reduce my expenses?",
-    ],
-    [
-        "Am I overspending compared with last month?",
-        "How much can I realistically save next month?",
-        "Which budgets are close to their limits?",
-        "Suggest a savings plan based on my income and expenses.",
-    ],
-]
+if has_data:
+    q_rows = [
+        [
+            "Analyze my spending this month.",
+            "Which category is costing me the most?",
+            "Where can I reduce my expenses?",
+        ],
+        [
+            "Am I overspending compared with last month?",
+            "How much can I realistically save next month?",
+            "Which budgets are close to their limits?",
+            "Suggest a savings plan based on my income and expenses.",
+        ],
+    ]
+else:
+    q_rows = [
+        [
+            "How does the 50/30/20 budgeting rule work?",
+            "How should I build an emergency fund?",
+            "What are effective tips to cut down daily expenses?",
+        ],
+        [
+            "How much of my income should I aim to save?",
+            "What is the difference between essential and discretionary expenses?",
+            "How do I set realistic financial goals?",
+        ],
+    ]
 
 clicked_question = None
 for row_questions in q_rows:
@@ -245,12 +264,14 @@ if prompt:
     contents = []
     for msg in recent_messages:
         role_tag = "user" if msg["role"] == "user" else "model"
-        contents.append(
-            types.Content(
-                role=role_tag,
-                parts=[types.Part.from_text(text=msg["content"])],
+        text_content = str(msg.get("content", "")).strip()
+        if text_content:
+            contents.append(
+                types.Content(
+                    role=role_tag,
+                    parts=[types.Part.from_text(text=text_content)],
+                )
             )
-        )
 
     with st.chat_message("assistant"):
         with st.spinner("Analyzing your finances with AI..."):
@@ -261,8 +282,11 @@ if prompt:
                 model_name=DEFAULT_GEMINI_MODEL,
                 max_retries=2,
             )
-        st.markdown(reply_text)
+        display_reply = reply_text.strip() if reply_text and reply_text.strip() else (
+            f"⚠️ **Could not generate response:** {err}" if err else "I was unable to analyze your request. Please try asking again."
+        )
+        st.markdown(display_reply)
 
     # Append assistant turn to session history
-    st.session_state[history_key].append({"role": "assistant", "content": reply_text})
+    st.session_state[history_key].append({"role": "assistant", "content": display_reply})
     st.rerun()

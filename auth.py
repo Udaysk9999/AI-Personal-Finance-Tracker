@@ -141,15 +141,13 @@ def _render_account_sidebar():
         initial = user_name[0].upper() if user_name else "U"
 
         st.markdown(
-            f"""
-            <div class="pft-user-badge">
-                <div class="pft-user-avatar">{initial}</div>
-                <div class="pft-user-info">
-                    <div class="pft-user-name">{user_name}</div>
-                    <div class="pft-user-role">Active Currency: {currency}</div>
-                </div>
-            </div>
-            """,
+            f'<div class="pft-user-badge">'
+            f'<div class="pft-user-avatar">{initial}</div>'
+            f'<div class="pft-user-info">'
+            f'<div class="pft-user-name">{user_name}</div>'
+            f'<div class="pft-user-role">Active Currency: {currency}</div>'
+            f'</div>'
+            f'</div>',
             unsafe_allow_html=True,
         )
         theme_toggle()
