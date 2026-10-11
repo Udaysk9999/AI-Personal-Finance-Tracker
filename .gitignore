@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .env
 .streamlit/secrets.toml
+# Allow .streamlit/config.toml (deployment config) to be committed
 .pytest_cache/
 .coverage
 htmlcov/
