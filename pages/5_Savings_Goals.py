@@ -58,7 +58,7 @@ with st.form("add_goal_form", clear_on_submit=True):
         elif goal_target <= 0:
             st.error("Please enter a target amount greater than ₹0.")
         else:
-            add_savings_goal(goal_name.strip(), goal_target, str(goal_date))
+            add_savings_goal(user_id, goal_name.strip(), goal_target, str(goal_date))
             st.session_state.goal_added = True
             st.rerun()
 

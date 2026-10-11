@@ -146,19 +146,33 @@ if prompt:
         "professional."
     )
 
-    full_prompt = (
+    system_instruction = (
         f"{system_prompt}\n\n"
-        f"Here is a summary of the user's financial data:\n\n{data_summary}\n\n"
-        f"User question: {prompt}"
+        f"Here is a summary of the user's financial data:\n\n{data_summary}"
     )
+
+    # Build multi-turn conversation history using google-genai types.
+    from google.genai import types
+
+    contents = []
+    for msg in st.session_state[f"advisor_messages_{user_id}"]:
+        contents.append(
+            types.Content(
+                role=msg["role"] if msg["role"] == "user" else "model",
+                parts=[types.Part.from_text(text=msg["content"])],
+            )
+        )
 
     with st.chat_message("assistant"):
         placeholder = st.empty()
         try:
             client = genai.Client(api_key=api_key)
             response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=full_prompt,
+                model="gemini-2.0-flash",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                ),
             )
             reply_text = response.text
         except Exception as e:
@@ -171,4 +185,4 @@ if prompt:
 if st.session_state[f"advisor_messages_{user_id}"]:
     if st.button("Clear conversation"):
         st.session_state[f"advisor_messages_{user_id}"] = []
-        st.rerun()
+        st.rerun()
