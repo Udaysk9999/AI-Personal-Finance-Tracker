@@ -118,7 +118,7 @@ def theme_chart_colors() -> dict:
     }
 
 
-def theme_toggle():
+def theme_toggle(key: str = "pft_theme_toggle"):
     """Renders a sleek theme toggle button for the sidebar."""
     if "pft_theme" not in st.session_state:
         st.session_state.pft_theme = "dark"
@@ -126,7 +126,7 @@ def theme_toggle():
     current = st.session_state.pft_theme
     label = "☀️ Switch to Light Mode" if current == "dark" else "🌙 Switch to Dark Mode"
 
-    if st.button(label, key="pft_theme_toggle", use_container_width=True):
+    if st.button(label, key=key, use_container_width=True):
         st.session_state.pft_theme = "light" if current == "dark" else "dark"
         st.rerun()
 

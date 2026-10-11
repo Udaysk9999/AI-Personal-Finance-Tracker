@@ -3,7 +3,13 @@ from datetime import date
 import pandas as pd
 
 from auth import require_login
-from database import create_database
+from database import (
+    create_database,
+    add_transaction,
+    get_transactions,
+    get_budgets,
+    get_savings_goals,
+)
 from utils import (
     inject_css,
     page_header,
@@ -34,57 +40,6 @@ inject_css()
 create_database()
 user_id, username = require_login()
 curr = get_user_currency()
-
-# ==================================================
-# SIDEBAR — Premium Navigation
-# ==================================================
-with st.sidebar:
-    st.markdown(
-        f"""
-        <div style="
-            text-align: center;
-            padding: 20px 10px;
-            background: linear-gradient(135deg, var(--pft-bg-glow-1), transparent);
-            border-radius: 20px;
-            margin-bottom: 24px;
-        ">
-            <h1 style="
-                font-size: 24px;
-                font-weight: 700;
-                color: var(--pft-text-primary);
-                background: var(--pft-title-grad);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                margin: 0;
-            ">💰 {username}</h1>
-            <p style="color: var(--pft-text-secondary); font-size: 13px; margin: 4px 0 0 0;">
-                AI-Powered Expense Tracker
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.divider()
-
-    # Theme toggle
-    st.markdown("### Appearance")
-    theme_toggle()
-
-    st.divider()
-
-    # Navigation
-    st.markdown("### Navigation")
-    st.page_link("app.py", label="🏠 Dashboard", icon="📊")
-    st.page_link("pages/1_Transaction_Management.py", label="📝 Transactions", icon="💵")
-    st.page_link("pages/3_Budget_Tracking.py", label="🎯 Budgets", icon="💼")
-    st.page_link("pages/4_Monthly_Analytics.py", label="📈 Analytics", icon="📊")
-    st.page_link("pages/5_Savings_Goals.py", label="🏦 Savings Goals", icon="🏦")
-    st.page_link("pages/6_AI_Financial_Advisor.py", label="🤖 AI Advisor", icon="🤖")
-    st.page_link("pages/7_Profile_Settings.py", label="⚙️ Profile", icon="⚙️")
-
-    st.divider()
-    st.caption(f"Version 2.0 • Currency: {curr}")
 
 # ==================================================
 # MAIN CONTENT — Dashboard (Default Home)
