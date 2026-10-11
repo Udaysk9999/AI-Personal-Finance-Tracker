@@ -1,26 +1,21 @@
 """
-Shared UI helpers for the Personal Finance Tracker.
+Shared UI helpers, design system, and formatting utilities for the
+AI-Powered Personal Expense Tracking & Budget Advisor.
 
-Theme system: call inject_css() at the top of every page (as before).
-It reads st.session_state["pft_theme"] ("dark" or "light", defaults to
-"dark") and injects the matching CSS variables. Call theme_toggle() in
-your sidebar (once, e.g. in app.py) to let the user switch — the choice
-is stored in session_state so it persists across page navigation within
-a session (Streamlit session_state does NOT persist across browser
-restarts; add your own persistence if you need that).
+Theme system:
+- Light and Dark modes with curated fintech color palettes.
+- Call inject_css() at the top of every page.
+- Call theme_toggle() in the sidebar.
+- Session-persisted theme and currency preferences.
 """
 
 import streamlit as st
+import html
 
 
 # ==================================================
-# CATEGORIES & COLORS
+# CATEGORIES & DESIGN TOKENS
 # ==================================================
-# NOTE: These are placeholder values reconstructed after the original
-# utils.py was overwritten. Please check these against what you actually
-# use in your transaction forms / budget categories and edit as needed —
-# if your category names don't match exactly, old transactions in your
-# database may not match up with these lists in dropdowns/filters.
 
 INCOME_CATEGORIES = [
     "Salary",
@@ -42,35 +37,60 @@ EXPENSE_CATEGORIES = [
     "Other Expense",
 ]
 
+# Curated fintech palette (high-contrast, accessible)
 FINANCE_COLORS = {
-    "income": "#00d4aa",
-    "expense": "#fb7185",
-    "balance": "#7c5cff",
-    "warning": "#fbbf24",
-    "neutral": "#9aa0ac",
+    "income": "#10b981",    # Emerald
+    "expense": "#f43f5e",   # Rose
+    "balance": "#6366f1",   # Indigo
+    "warning": "#f59e0b",   # Amber
+    "teal": "#14b8a6",      # Cyan/Teal
+    "sky": "#0284c7",       # Sky Blue
+    "violet": "#8b5cf6",    # Violet
+    "neutral": "#94a3b8",   # Slate neutral
 }
 
-# List form for use with plotly's color_discrete_sequence (which needs
-# a list, not a dict). Keep FINANCE_COLORS above for semantic lookups
-# like FINANCE_COLORS["income"].
-FINANCE_COLOR_SEQUENCE = list(FINANCE_COLORS.values())
+FINANCE_COLOR_SEQUENCE = [
+    "#6366f1",  # Indigo
+    "#10b981",  # Emerald
+    "#f43f5e",  # Rose
+    "#f59e0b",  # Amber
+    "#06b6d4",  # Cyan
+    "#8b5cf6",  # Violet
+    "#ec4899",  # Pink
+    "#14b8a6",  # Teal
+    "#3b82f6",  # Blue
+]
 
 
 # ==================================================
-# FORMATTING HELPERS
+# CURRENCY & FORMATTING
 # ==================================================
 
-def format_currency(amount) -> str:
-    """Format a number as 'Rs. 1,234.56'. Used across the transaction,
-    budget, dashboard, and analytics pages."""
+def get_user_currency() -> str:
+    """Retrieve the active user's chosen currency symbol from session state, defaulting to ₹."""
     try:
-        return f"Rs. {amount:,.2f}"
+        return st.session_state.get("user_currency", "₹")
+    except Exception:
+        return "₹"
+
+
+def format_currency(amount, symbol: str = None) -> str:
+    """
+    Format a numeric amount with the user's active currency symbol.
+    Correctly places negative sign before the symbol: '-$50.00' instead of '$-50.00'.
+    """
+    curr = symbol if symbol is not None else get_user_currency()
+    try:
+        val = float(amount)
+        if val < 0:
+            return f"-{curr}{abs(val):,.2f}"
+        return f"{curr}{val:,.2f}"
     except (TypeError, ValueError):
-        return "Rs. 0.00"
+        return f"{curr}0.00"
 
 
 # ==================================================
-# THEME — Light / Dark via CSS variables
+# THEME CONFIGURATION
 # ==================================================
 
 def _current_theme() -> str:
@@ -78,383 +98,415 @@ def _current_theme() -> str:
 
 
 def theme_chart_colors() -> dict:
-    """Return readable Plotly colors for the active session theme."""
+    """Return crisp Plotly colors for the active theme."""
     if _current_theme() == "light":
         return {
-            "font": "#1a1d24",
-            "title": "#1a1d24",
-            "axis": "#5b606c",
-            "grid": "#dfe2e8",
-            "legend": "#343944",
-            "marker_line": "#f5f6fa",
+            "font": "#0f172a",
+            "title": "#0f172a",
+            "axis": "#64748b",
+            "grid": "#e2e8f0",
+            "legend": "#334155",
+            "marker_line": "#ffffff",
         }
     return {
-        "font": "#E5E7EB",
-        "title": "#FFFFFF",
-        "axis": "#9aa0ac",
-        "grid": "#2D2D33",
-        "legend": "#D1D5DB",
-        "marker_line": "#18181B",
+        "font": "#e2e8f0",
+        "title": "#f8fafc",
+        "axis": "#94a3b8",
+        "grid": "#1e293b",
+        "legend": "#cbd5e1",
+        "marker_line": "#090d16",
     }
 
 
 def theme_toggle():
-    """
-    Renders a small toggle button. Place this once in your sidebar,
-    e.g. in app.py:
-
-        from utils import theme_toggle
-        with st.sidebar:
-            theme_toggle()
-    """
+    """Renders a sleek theme toggle button for the sidebar."""
     if "pft_theme" not in st.session_state:
         st.session_state.pft_theme = "dark"
 
     current = st.session_state.pft_theme
-    label = "☀️ Light mode" if current == "dark" else "🌙 Dark mode"
+    label = "☀️ Switch to Light Mode" if current == "dark" else "🌙 Switch to Dark Mode"
 
     if st.button(label, key="pft_theme_toggle", use_container_width=True):
         st.session_state.pft_theme = "light" if current == "dark" else "dark"
         st.rerun()
 
 
+# ==================================================
+# CSS INJECTION — PREMIUM FINTECH DESIGN SYSTEM
+# ==================================================
+
 def inject_css():
+    """Inject the comprehensive fintech design system CSS into the Streamlit app."""
     theme = _current_theme()
 
     if theme == "light":
         vars_css = """
-            --pft-bg: #f5f6fa;
-            --pft-bg-glow-1: rgba(124, 92, 255, 0.08);
-            --pft-bg-glow-2: rgba(0, 170, 140, 0.07);
-            --pft-sidebar-bg: rgba(255, 255, 255, 0.75);
-            --pft-sidebar-border: rgba(15, 20, 30, 0.08);
-            --pft-text-primary: #1a1d24;
-            --pft-text-secondary: #5b606c;
-            --pft-glass-bg: rgba(15, 20, 30, 0.035);
-            --pft-glass-border: rgba(15, 20, 30, 0.10);
-            --pft-glass-border-hover: rgba(124, 92, 255, 0.45);
-            --pft-shadow: 0 4px 20px rgba(15, 20, 30, 0.08);
-            --pft-header-grad: linear-gradient(135deg, rgba(124, 92, 255, 0.10), rgba(0, 170, 140, 0.06));
-            --pft-title-grad: linear-gradient(90deg, #1a1d24, #6a4fe0);
-            --pft-divider-grad: linear-gradient(90deg, transparent, rgba(15,20,30,0.15), transparent);
-            --pft-input-bg: rgba(15, 20, 30, 0.03);
-            --pft-input-border: rgba(15, 20, 30, 0.14);
-            --pft-scrollbar: rgba(15, 20, 30, 0.18);
-            --pft-btn-bg: rgba(15, 20, 30, 0.04);
-            --pft-btn-border: rgba(15, 20, 30, 0.12);
-            --pft-input-solid: #ffffff;
-            --pft-input-text: #1a1d24;
-            --pft-menu-bg: #ffffff;
+            --pft-bg: #f8fafc;
+            --pft-surface: #ffffff;
+            --pft-surface-hover: #f1f5f9;
+            --pft-surface-muted: #f1f5f9;
+            --pft-border: rgba(15, 23, 42, 0.08);
+            --pft-border-strong: rgba(15, 23, 42, 0.16);
+            --pft-border-focus: #6366f1;
+            
+            --pft-text-primary: #0f172a;
+            --pft-text-secondary: #475569;
+            --pft-text-muted: #64748b;
+            
+            --pft-sidebar-bg: #ffffff;
+            --pft-sidebar-border: rgba(15, 23, 42, 0.08);
+            
+            --pft-header-grad: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(16, 185, 129, 0.04));
+            --pft-header-border: rgba(99, 102, 241, 0.12);
+            --pft-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --pft-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -2px rgba(15, 23, 42, 0.04);
+            
+            --pft-input-bg: #ffffff;
+            --pft-input-border: #cbd5e1;
+            --pft-input-text: #0f172a;
+            
+            --pft-btn-primary-bg: #4f46e5;
+            --pft-btn-primary-hover: #4338ca;
+            --pft-btn-primary-text: #ffffff;
+            
+            --pft-badge-bg: rgba(99, 102, 241, 0.08);
+            --pft-badge-text: #4f46e5;
         """
     else:
         vars_css = """
-            --pft-bg: #0b0e14;
-            --pft-bg-glow-1: rgba(124, 92, 255, 0.12);
-            --pft-bg-glow-2: rgba(0, 212, 170, 0.10);
-            --pft-sidebar-bg: rgba(18, 21, 30, 0.85);
+            --pft-bg: #0b0f19;
+            --pft-surface: #111827;
+            --pft-surface-hover: #1f2937;
+            --pft-surface-muted: #1e293b;
+            --pft-border: rgba(255, 255, 255, 0.08);
+            --pft-border-strong: rgba(255, 255, 255, 0.14);
+            --pft-border-focus: #818cf8;
+            
+            --pft-text-primary: #f8fafc;
+            --pft-text-secondary: #94a3b8;
+            --pft-text-muted: #64748b;
+            
+            --pft-sidebar-bg: #0d121f;
             --pft-sidebar-border: rgba(255, 255, 255, 0.06);
-            --pft-text-primary: #f4f5f7;
-            --pft-text-secondary: #9aa0ac;
-            --pft-glass-bg: rgba(255, 255, 255, 0.04);
-            --pft-glass-border: rgba(255, 255, 255, 0.08);
-            --pft-glass-border-hover: rgba(124, 92, 255, 0.40);
-            --pft-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-            --pft-header-grad: linear-gradient(135deg, rgba(124, 92, 255, 0.15), rgba(0, 212, 170, 0.08));
-            --pft-title-grad: linear-gradient(90deg, #ffffff, #b9b3ff);
-            --pft-divider-grad: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
-            --pft-input-bg: rgba(255, 255, 255, 0.04);
-            --pft-input-border: rgba(255, 255, 255, 0.1);
-            --pft-scrollbar: rgba(255, 255, 255, 0.15);
-            --pft-btn-bg: rgba(255, 255, 255, 0.05);
-            --pft-btn-border: rgba(255, 255, 255, 0.1);
-            --pft-input-solid: #1c1f29;
-            --pft-input-text: #f4f5f7;
-            --pft-menu-bg: #161922;
+            
+            --pft-header-grad: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(16, 185, 129, 0.08));
+            --pft-header-border: rgba(99, 102, 241, 0.20);
+            --pft-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+            --pft-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+            
+            --pft-input-bg: #111827;
+            --pft-input-border: #334155;
+            --pft-input-text: #f8fafc;
+            
+            --pft-btn-primary-bg: #6366f1;
+            --pft-btn-primary-hover: #4f46e5;
+            --pft-btn-primary-text: #ffffff;
+            
+            --pft-badge-bg: rgba(99, 102, 241, 0.18);
+            --pft-badge-text: #a5b4fc;
         """
 
     st.markdown(
         f"""
         <style>
-
         :root {{
             {vars_css}
         }}
 
-        /* ---------- Base ---------- */
+        /* Global Typography & Background */
         html, body, [class*="css"] {{
-            font-family: 'Inter', 'Segoe UI', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
         }}
 
         .stApp {{
-            background:
-                radial-gradient(circle at 15% 10%, var(--pft-bg-glow-1), transparent 40%),
-                radial-gradient(circle at 85% 0%, var(--pft-bg-glow-2), transparent 40%),
-                var(--pft-bg);
+            background-color: var(--pft-bg);
+            color: var(--pft-text-primary);
         }}
 
-        /* ---------- Sidebar ---------- */
+        /* Sidebar Styling */
         section[data-testid="stSidebar"] {{
-            background: var(--pft-sidebar-bg);
-            backdrop-filter: blur(14px);
-            border-right: 1px solid var(--pft-sidebar-border);
-        }}
-        section[data-testid="stSidebar"] .stMarkdown,
-        section[data-testid="stSidebar"] a {{
-            color: var(--pft-text-secondary) !important;
+            background-color: var(--pft-sidebar-bg) !important;
+            border-right: 1px solid var(--pft-sidebar-border) !important;
         }}
 
-        /* ---------- Body text ---------- */
-        p, span, label, li, .stMarkdown {{
-            color: var(--pft-text-primary);
-        }}
-        .stCaption, [data-testid="stCaptionContainer"] {{
-            color: var(--pft-text-secondary) !important;
+        section[data-testid="stSidebar"] .stMarkdown p {{
+            color: var(--pft-text-secondary);
         }}
 
-        /* ---------- Native Streamlit surfaces ---------- */
-        [data-testid="stForm"], [data-testid="stExpander"],
-        [data-testid="stAlert"], [data-testid="stMetric"] {{
-            color: var(--pft-text-primary);
-        }}
-        [data-testid="stMetricLabel"], [data-testid="stMetricValue"],
-        [data-testid="stMetricDelta"] {{
-            color: var(--pft-text-primary) !important;
-        }}
-        [data-baseweb="select"] > div,
-        [data-baseweb="input"], [data-baseweb="textarea"],
-        [data-testid="stDateInput"] input {{
-            background: var(--pft-input-bg) !important;
-            color: var(--pft-text-primary) !important;
-            border-color: var(--pft-input-border) !important;
-        }}
-        /* BaseWeb nests the editable element inside its wrapper. Target the
-           actual input/textarea as well so Streamlit's dark default theme
-           cannot make light-mode values disappear. */
-        .stTextInput input, .stNumberInput input, .stDateInput input,
-        [data-baseweb="input"] input, [data-baseweb="textarea"] textarea,
-        [data-baseweb="select"] input {{
-            background-color: var(--pft-input-solid) !important;
-            color: var(--pft-input-text) !important;
-            -webkit-text-fill-color: var(--pft-input-text) !important;
-            caret-color: var(--pft-input-text) !important;
-            color-scheme: {_current_theme()};
-        }}
-        /* BaseWeb paints the rounded field on one or more parent wrappers.
-           Style those wrappers too; otherwise dark Streamlit defaults can
-           remain visible around otherwise-correct light input text. */
-        [data-testid="stTextInput"] [data-baseweb="input"],
-        [data-testid="stNumberInput"] [data-baseweb="input"],
-        [data-testid="stDateInput"] [data-baseweb="input"],
-        [data-testid="stTextInput"] [data-baseweb="base-input"],
-        [data-testid="stNumberInput"] [data-baseweb="base-input"],
-        [data-testid="stDateInput"] [data-baseweb="base-input"],
-        [data-testid="stTextInput"] [data-baseweb="input"] > div,
-        [data-testid="stNumberInput"] [data-baseweb="input"] > div,
-        [data-testid="stDateInput"] [data-baseweb="input"] > div,
-        [data-testid="stSelectbox"] [data-baseweb="select"] > div {{
-            background: var(--pft-input-solid) !important;
-            background-color: var(--pft-input-solid) !important;
-            border-color: var(--pft-input-border) !important;
-            color: var(--pft-input-text) !important;
-        }}
-        /* Fallback for Streamlit version-specific class names. */
-        input, textarea, select,
-        [role="combobox"], [role="spinbutton"] {{
-            background: var(--pft-input-solid) !important;
-            background-color: var(--pft-input-solid) !important;
-            color: var(--pft-input-text) !important;
-            -webkit-text-fill-color: var(--pft-input-text) !important;
-            border-color: var(--pft-input-border) !important;
-        }}
-        input::placeholder, textarea::placeholder {{
-            color: var(--pft-text-secondary) !important;
-            -webkit-text-fill-color: var(--pft-text-secondary) !important;
-        }}
-        [data-testid="stTextInput"] [data-baseweb="input"] svg,
-        [data-testid="stNumberInput"] [data-baseweb="input"] svg,
-        [data-testid="stDateInput"] [data-baseweb="input"] svg {{
-            color: var(--pft-text-secondary) !important;
-            fill: var(--pft-text-secondary) !important;
-        }}
-        .stTextInput input::placeholder, .stNumberInput input::placeholder,
-        .stDateInput input::placeholder, [data-baseweb="textarea"] textarea::placeholder {{
-            color: var(--pft-text-secondary) !important;
-            -webkit-text-fill-color: var(--pft-text-secondary) !important;
-            opacity: 1 !important;
-        }}
-        [data-baseweb="select"] > div {{
-            background-color: var(--pft-input-solid) !important;
-            color: var(--pft-input-text) !important;
-        }}
-        [data-baseweb="popover"] > div, [role="listbox"] {{
-            background: var(--pft-menu-bg) !important;
-            color: var(--pft-text-primary) !important;
-        }}
-        [role="option"] {{ color: var(--pft-text-primary) !important; }}
-        [data-testid="stTabs"] button {{ color: var(--pft-text-secondary) !important; }}
-        [data-testid="stTabs"] button[aria-selected="true"] {{ color: #7c5cff !important; }}
-
-        /* ---------- Headings ---------- */
-        h1, h2, h3 {{
+        /* Headings */
+        h1, h2, h3, h4 {{
             color: var(--pft-text-primary) !important;
             font-weight: 700 !important;
-            letter-spacing: -0.02em;
+            letter-spacing: -0.02em !important;
         }}
 
-        /* ---------- Page header block ---------- */
+        h1 {{ font-size: 1.85rem !important; margin-bottom: 0.5rem !important; }}
+        h2 {{ font-size: 1.35rem !important; margin-top: 1.25rem !important; margin-bottom: 0.5rem !important; }}
+        h3 {{ font-size: 1.15rem !important; }}
+
+        /* Text colors */
+        p, span, label, div {{
+            color: var(--pft-text-primary);
+        }}
+        .stCaption, [data-testid="stCaptionContainer"] p {{
+            color: var(--pft-text-muted) !important;
+            font-size: 0.85rem !important;
+        }}
+
+        /* Header Card */
         .pft-header {{
-            padding: 28px 32px;
-            margin-bottom: 20px;
-            border-radius: 20px;
+            padding: 22px 26px;
+            margin-bottom: 22px;
+            border-radius: 14px;
             background: var(--pft-header-grad);
-            border: 1px solid var(--pft-glass-border);
-            backdrop-filter: blur(12px);
+            border: 1px solid var(--pft-header-border);
             box-shadow: var(--pft-shadow);
         }}
-        .pft-header h1 {{
-            margin: 0 0 6px 0;
-            font-size: 28px;
-            background: var(--pft-title-grad);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }}
-        .pft-header p {{
+        .pft-header-title {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.65rem;
+            font-weight: 700;
+            color: var(--pft-text-primary);
             margin: 0;
+            letter-spacing: -0.02em;
+        }}
+        .pft-header-sub {{
+            margin: 6px 0 0 0;
             color: var(--pft-text-secondary);
-            font-size: 15px;
+            font-size: 0.95rem;
+            line-height: 1.45;
         }}
 
-        /* ---------- Section divider ---------- */
+        /* Metric / Stat Card */
+        .pft-stat-card {{
+            background: var(--pft-surface);
+            border: 1px solid var(--pft-border);
+            border-radius: 12px;
+            padding: 18px 20px;
+            box-shadow: var(--pft-shadow-sm);
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+            position: relative;
+            overflow: hidden;
+        }}
+        .pft-stat-card:hover {{
+            transform: translateY(-2px);
+            box-shadow: var(--pft-shadow);
+            border-color: var(--pft-border-strong);
+        }}
+        .pft-stat-card::before {{
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }}
+        .pft-stat-card.accent-emerald::before {{ background: #10b981; }}
+        .pft-stat-card.accent-rose::before    {{ background: #f43f5e; }}
+        .pft-stat-card.accent-indigo::before  {{ background: #6366f1; }}
+        .pft-stat-card.accent-amber::before   {{ background: #f59e0b; }}
+        .pft-stat-card.accent-cyan::before    {{ background: #06b6d4; }}
+
+        .pft-stat-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }}
+        .pft-stat-label {{
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--pft-text-secondary);
+        }}
+        .pft-stat-icon {{
+            font-size: 1.1rem;
+            opacity: 0.85;
+        }}
+        .pft-stat-value {{
+            font-size: 1.7rem;
+            font-weight: 700;
+            color: var(--pft-text-primary);
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+        }}
+        .pft-stat-delta {{
+            margin-top: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }}
+        .pft-delta-pos {{ color: #10b981; }}
+        .pft-delta-neg {{ color: #f43f5e; }}
+        .pft-delta-neutral {{ color: var(--pft-text-secondary); }}
+
+        /* Card Container */
+        .pft-card {{
+            background: var(--pft-surface);
+            border: 1px solid var(--pft-border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--pft-shadow-sm);
+            margin-bottom: 16px;
+        }}
+
+        /* Badges */
+        .pft-badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }}
+        .pft-badge-indigo  {{ background: rgba(99, 102, 241, 0.15); color: #818cf8; }}
+        .pft-badge-emerald {{ background: rgba(16, 185, 129, 0.15); color: #10b981; }}
+        .pft-badge-rose    {{ background: rgba(244, 63, 94, 0.15);  color: #f43f5e; }}
+        .pft-badge-amber   {{ background: rgba(245, 158, 11, 0.15); color: #f59e0b; }}
+        .pft-badge-neutral {{ background: rgba(148, 163, 184, 0.15); color: #94a3b8; }}
+
+        /* Empty State */
+        .pft-empty-state {{
+            text-align: center;
+            padding: 36px 20px;
+            background: var(--pft-surface);
+            border: 1px dashed var(--pft-border-strong);
+            border-radius: 12px;
+            margin: 16px 0;
+        }}
+        .pft-empty-icon {{
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }}
+        .pft-empty-title {{
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--pft-text-primary);
+            margin-bottom: 4px;
+        }}
+        .pft-empty-desc {{
+            font-size: 0.88rem;
+            color: var(--pft-text-secondary);
+            max-width: 440px;
+            margin: 0 auto;
+        }}
+
+        /* Buttons */
+        .stButton > button {{
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            font-size: 0.9rem !important;
+            padding: 0.45rem 1rem !important;
+            transition: all 0.15s ease !important;
+            border: 1px solid var(--pft-border-strong) !important;
+        }}
+        .stButton > button[kind="primary"] {{
+            background-color: var(--pft-btn-primary-bg) !important;
+            border: 1px solid var(--pft-btn-primary-bg) !important;
+            color: var(--pft-btn-primary-text) !important;
+        }}
+        .stButton > button[kind="primary"]:hover {{
+            background-color: var(--pft-btn-primary-hover) !important;
+            border-color: var(--pft-btn-primary-hover) !important;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25) !important;
+        }}
+        .stButton > button[kind="secondary"]:hover {{
+            border-color: var(--pft-border-focus) !important;
+            color: var(--pft-border-focus) !important;
+        }}
+
+        /* Inputs & Selectboxes */
+        input, textarea, select, [data-baseweb="select"] > div {{
+            border-radius: 8px !important;
+            border-color: var(--pft-input-border) !important;
+        }}
+        .stTextInput input, .stNumberInput input, .stDateInput input, [data-baseweb="input"] input {{
+            background-color: var(--pft-input-bg) !important;
+            color: var(--pft-input-text) !important;
+            -webkit-text-fill-color: var(--pft-input-text) !important;
+        }}
+
+        /* Section Divider */
         .pft-divider {{
             height: 1px;
-            margin: 28px 0;
-            background: var(--pft-divider-grad);
+            margin: 24px 0;
+            background: linear-gradient(90deg, transparent, var(--pft-border-strong), transparent);
             border: none;
         }}
 
-        /* ---------- Generic glass card ---------- */
-        .pft-card {{
-            padding: 20px 22px;
-            border-radius: 16px;
-            background: var(--pft-glass-bg);
-            border: 1px solid var(--pft-glass-border);
-            backdrop-filter: blur(10px);
-            box-shadow: var(--pft-shadow);
-            transition: transform 0.15s ease, border-color 0.15s ease;
-        }}
-        .pft-card:hover {{
-            transform: translateY(-2px);
-            border-color: var(--pft-glass-border-hover);
-        }}
-
-        /* ---------- Metric cards ---------- */
-        .pft-metric {{
-            padding: 18px 20px;
-            border-radius: 16px;
-            background: var(--pft-glass-bg);
-            border: 1px solid var(--pft-glass-border);
-            backdrop-filter: blur(10px);
-        }}
-        .pft-metric .label {{
-            font-size: 13px;
-            color: var(--pft-text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            margin-bottom: 6px;
-        }}
-        .pft-metric .value {{
-            font-size: 26px;
-            font-weight: 700;
-            color: var(--pft-text-primary);
-        }}
-        .pft-metric .delta-pos {{ color: #22c55e; font-size: 13px; margin-top: 4px; }}
-        .pft-metric .delta-neg {{ color: #ef4444; font-size: 13px; margin-top: 4px; }}
-
-        /* accent border variants */
-        .pft-metric.accent-violet {{ border-top: 3px solid #7c5cff; }}
-        .pft-metric.accent-teal   {{ border-top: 3px solid #00b894; }}
-        .pft-metric.accent-amber  {{ border-top: 3px solid #f59e0b; }}
-        .pft-metric.accent-rose   {{ border-top: 3px solid #fb7185; }}
-
-        /* ---------- Badges ---------- */
-        .pft-badge {{
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 600;
-        }}
-        .pft-badge-green  {{ background: rgba(34, 197, 94, 0.15); color: #16a34a; }}
-        .pft-badge-red    {{ background: rgba(239, 68, 68, 0.15); color: #dc2626; }}
-        .pft-badge-violet {{ background: rgba(124, 92, 255, 0.15); color: #7c5cff; }}
-
-        /* ---------- AI disclaimer box (Advisor page) ---------- */
+        /* AI Disclaimer Box */
         .ai-disclaimer {{
             padding: 14px 18px;
-            border-radius: 14px;
-            background: rgba(124, 92, 255, 0.08);
-            border: 1px solid rgba(124, 92, 255, 0.25);
+            border-radius: 10px;
+            background: rgba(99, 102, 241, 0.08);
+            border: 1px solid rgba(99, 102, 241, 0.22);
             color: var(--pft-text-secondary);
-            font-size: 14px;
+            font-size: 0.88rem;
             line-height: 1.5;
             margin-bottom: 18px;
         }}
 
-        /* ---------- Buttons ---------- */
-        .stButton > button {{
-            border-radius: 12px !important;
-            border: 1px solid var(--pft-btn-border) !important;
-            background: var(--pft-btn-bg) !important;
-            color: var(--pft-text-primary) !important;
-            font-weight: 600 !important;
-            transition: all 0.15s ease !important;
+        /* Account Sidebar Badge */
+        .pft-user-badge {{
+            padding: 10px 14px;
+            background: var(--pft-surface-muted);
+            border: 1px solid var(--pft-border);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
         }}
-        .stButton > button:hover {{
-            border-color: #7c5cff !important;
-            background: rgba(124, 92, 255, 0.15) !important;
-            color: #7c5cff !important;
+        .pft-user-avatar {{
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #6366f1;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.85rem;
         }}
-        .stButton > button[kind="primary"] {{
-            background: linear-gradient(135deg, #7c5cff, #00b894) !important;
-            border: none !important;
-            color: #ffffff !important;
-        }}
-
-        /* ---------- Inputs ---------- */
-        .stTextInput input, .stNumberInput input, .stDateInput input,
-        .stSelectbox > div > div, textarea {{
-            background: var(--pft-input-bg) !important;
-            border: 1px solid var(--pft-input-border) !important;
-            border-radius: 10px !important;
-            color: var(--pft-text-primary) !important;
-        }}
-
-        /* ---------- Chat bubbles ---------- */
-        [data-testid="stChatMessage"] {{
-            border-radius: 16px;
-            padding: 4px 6px;
-            margin-bottom: 4px;
-        }}
-
-        /* ---------- Dataframes / tables ---------- */
-        [data-testid="stDataFrame"] {{
-            border-radius: 14px;
+        .pft-user-info {{
+            line-height: 1.25;
             overflow: hidden;
-            border: 1px solid var(--pft-glass-border);
         }}
-        [data-testid="stDataFrame"] iframe {{ color-scheme: {_current_theme()}; }}
-
-        /* ---------- Expander ---------- */
-        .streamlit-expanderHeader {{
-            background: var(--pft-glass-bg) !important;
-            border-radius: 10px !important;
+        .pft-user-name {{
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--pft-text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        .pft-user-role {{
+            font-size: 0.75rem;
+            color: var(--pft-text-muted);
         }}
 
-        /* ---------- Scrollbar ---------- */
-        ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
-        ::-webkit-scrollbar-track {{ background: transparent; }}
-        ::-webkit-scrollbar-thumb {{ background: var(--pft-scrollbar); border-radius: 8px; }}
-
+        /* Responsive Layout Overrides */
+        @media (max-width: 768px) {{
+            .pft-header {{
+                padding: 16px 18px;
+            }}
+            .pft-header-title {{
+                font-size: 1.35rem;
+            }}
+            .pft-stat-value {{
+                font-size: 1.4rem;
+            }}
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -462,16 +514,24 @@ def inject_css():
 
 
 # ==================================================
-# COMPONENTS
+# REUSABLE COMPONENTS
 # ==================================================
 
-def page_header(title: str, subtitle: str = ""):
-    """Glass-card style page header. Same signature as before."""
+def page_header(title: str, subtitle: str = "", badge_text: str = None, icon: str = None):
+    """
+    Renders a unified page header card with title, optional subtitle, and optional status badge.
+    """
+    badge_html = f'<span class="pft-badge pft-badge-indigo" style="margin-left: auto;">{badge_text}</span>' if badge_text else ""
+    icon_prefix = f'<span style="opacity: 0.9;">{icon}</span> ' if icon else ""
+    
     st.markdown(
         f"""
         <div class="pft-header">
-            <h1>{title}</h1>
-            {f'<p>{subtitle}</p>' if subtitle else ''}
+            <div class="pft-header-title">
+                {icon_prefix}{title}
+                {badge_html}
+            </div>
+            {f'<p class="pft-header-sub">{subtitle}</p>' if subtitle else ''}
         </div>
         """,
         unsafe_allow_html=True,
@@ -479,27 +539,40 @@ def page_header(title: str, subtitle: str = ""):
 
 
 def section_divider():
-    """Subtle gradient divider. Same signature as before."""
+    """Renders a sleek gradient section divider."""
     st.markdown('<hr class="pft-divider" />', unsafe_allow_html=True)
 
 
-def metric_card(label: str, value: str, delta: str = None, accent: str = "violet"):
+def metric_card(label: str, value: str, delta: str = None, accent: str = "indigo", icon: str = None, help_text: str = None):
     """
-    Glass metric card, nicer than st.metric for this theme.
-
-    accent: "violet" | "teal" | "amber" | "rose"
-    delta: pass a string like "+12.4%" (auto colored green) or "-3.1%" (auto red)
+    Renders a fintech stat card.
+    accent: "emerald" | "rose" | "indigo" | "amber" | "cyan"
     """
     delta_html = ""
-    if delta is not None:
-        cls = "delta-neg" if delta.strip().startswith("-") else "delta-pos"
-        delta_html = f'<div class="{cls}">{delta}</div>'
+    if delta is not None and str(delta).strip():
+        delta_str = str(delta).strip()
+        if delta_str.startswith("-"):
+            cls = "pft-delta-neg"
+            arrow = "↓ "
+        elif delta_str.startswith("+"):
+            cls = "pft-delta-pos"
+            arrow = "↑ "
+        else:
+            cls = "pft-delta-neutral"
+            arrow = ""
+        sub = f" <span style='color: var(--pft-text-muted); font-weight: 400;'>{help_text}</span>" if help_text else ""
+        delta_html = f'<div class="pft-stat-delta {cls}">{arrow}{delta_str}{sub}</div>'
+
+    icon_html = f'<div class="pft-stat-icon">{icon}</div>' if icon else ""
 
     st.markdown(
         f"""
-        <div class="pft-metric accent-{accent}">
-            <div class="label">{label}</div>
-            <div class="value">{value}</div>
+        <div class="pft-stat-card accent-{accent}">
+            <div class="pft-stat-header">
+                <span class="pft-stat-label">{html.escape(label)}</span>
+                {icon_html}
+            </div>
+            <div class="pft-stat-value">{html.escape(str(value))}</div>
             {delta_html}
         </div>
         """,
@@ -507,15 +580,30 @@ def metric_card(label: str, value: str, delta: str = None, accent: str = "violet
     )
 
 
-def badge(text: str, kind: str = "violet"):
-    """Small pill badge. kind: 'green' | 'red' | 'violet'."""
-    st.markdown(f'<span class="pft-badge pft-badge-{kind}">{text}</span>', unsafe_allow_html=True)
+def empty_state(title: str, description: str, icon: str = "📊"):
+    """Renders a clean empty-state message with guidance."""
+    st.markdown(
+        f"""
+        <div class="pft-empty-state">
+            <div class="pft-empty-icon">{icon}</div>
+            <div class="pft-empty-title">{html.escape(title)}</div>
+            <div class="pft-empty-desc">{html.escape(description)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def badge(text: str, kind: str = "indigo"):
+    """Small pill badge. kind: 'emerald' | 'rose' | 'amber' | 'indigo' | 'neutral'."""
+    st.markdown(f'<span class="pft-badge pft-badge-{kind}">{html.escape(text)}</span>', unsafe_allow_html=True)
 
 
 def card_start():
-    """Open a glass card container — pair with card_end() around any content."""
+    """Open a card container."""
     st.markdown('<div class="pft-card">', unsafe_allow_html=True)
 
 
 def card_end():
+    """Close a card container."""
     st.markdown("</div>", unsafe_allow_html=True)

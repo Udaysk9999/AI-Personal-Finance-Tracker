@@ -4,27 +4,38 @@ import os
 
 from auth import require_login
 from database import create_database, get_transactions, get_budgets, get_savings_goals
-from utils import inject_css, page_header, section_divider
+from utils import (
+    inject_css,
+    page_header,
+    section_divider,
+    empty_state,
+    format_currency,
+    get_user_currency,
+)
 
 st.set_page_config(page_title="AI Financial Advisor", page_icon="🤖", layout="wide")
 inject_css()
 
 create_database()
 user_id, username = require_login()
+curr = get_user_currency()
 
-page_header("AI Financial Advisor", "Ask questions about your finances and get personalized suggestions.")
+page_header(
+    "AI Financial Advisor",
+    "Personalized, cautious financial intelligence and spending optimization powered by Google Gemini.",
+    badge_text="Gemini 2.0",
+    icon="🤖",
+)
 
 st.markdown(
     """<div class="ai-disclaimer">
-        This feature uses Google's Gemini API (free tier) to analyze summarized numbers from your own
-        data. It is not a licensed financial advisor and its suggestions should not be treated as
-        professional financial advice — always use your own judgment for major financial decisions.
-        On Gemini's free tier, prompts may be used by Google to improve their models — only summarized
-        totals are sent, never your raw transaction list.
+        <strong>🛡️ AI Advisory & Privacy Notice:</strong> This feature uses Google's Gemini API to analyze
+        aggregated financial summaries of your data. It provides practical suggestions grounded strictly
+        in your recorded numbers, not licensed financial or investment advice. Only anonymized category
+        totals are sent — never your raw identity or individual account lists.
     </div>""",
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
-
 
 # ==================================================
 # API KEY CHECK
@@ -37,8 +48,8 @@ if not api_key and hasattr(st, "secrets"):
 if not api_key:
     st.warning(
         "No Gemini API key found. Set the `GEMINI_API_KEY` environment variable "
-        "(or add it to `.streamlit/secrets.toml` as `GEMINI_API_KEY = \"...\"`) to enable this page.\n\n"
-        "Get a free key (no credit card required) at https://aistudio.google.com/app/apikey"
+        "(or configure `.streamlit/secrets.toml` with `GEMINI_API_KEY = \"...\"`) to enable this page.\n\n"
+        "Obtain a free key at https://aistudio.google.com/app/apikey"
     )
     st.stop()
 
@@ -46,27 +57,29 @@ try:
     from google import genai
 except ImportError:
     st.error(
-        "The `google-genai` package isn't installed. Run `pip install google-genai` "
-        "(it's included in requirements.txt)."
+        "The `google-genai` package is not installed. Run `pip install google-genai`."
     )
     st.stop()
 
-
 # ==================================================
-# BUILD A SUMMARY OF THE USER'S DATA
+# BUILD FINANCIAL DATA SUMMARY
 # ==================================================
 
 transactions = get_transactions(user_id)
 
 if not transactions:
-    st.info("Add some transactions first so the advisor has data to work with.")
+    empty_state(
+        "No Transactions to Analyze",
+        "Add transactions in Transaction Management first so the AI Advisor has numbers to review.",
+        icon="💳",
+    )
     st.stop()
 
 df = pd.DataFrame(transactions, columns=["ID", "Date", "Type", "Category", "Amount", "Description"])
 df["Date"] = pd.to_datetime(df["Date"])
 
-total_income = df[df["Type"] == "Income"]["Amount"].sum()
-total_expenses = df[df["Type"] == "Expense"]["Amount"].sum()
+total_income = float(df[df["Type"] == "Income"]["Amount"].sum())
+total_expenses = float(df[df["Type"] == "Expense"]["Amount"].sum())
 balance = total_income - total_expenses
 
 expense_by_category = (
@@ -77,37 +90,37 @@ budgets = get_budgets(user_id)
 goals = get_savings_goals(user_id)
 
 summary_lines = [
-    f"Total income: Rs. {total_income:,.2f}",
-    f"Total expenses: Rs. {total_expenses:,.2f}",
-    f"Current balance: Rs. {balance:,.2f}",
-    "Spending by category:",
+    f"Active Currency: {curr}",
+    f"Total recorded income: {format_currency(total_income)}",
+    f"Total recorded expenses: {format_currency(total_expenses)}",
+    f"Current available balance: {format_currency(balance)}",
+    "Expense breakdown by category:",
 ]
 for category, amount in expense_by_category.items():
-    summary_lines.append(f"  - {category}: Rs. {amount:,.2f}")
+    summary_lines.append(f"  - {category}: {format_currency(amount)}")
 
 if budgets:
-    summary_lines.append("Budgets set (monthly limits):")
+    summary_lines.append("Active monthly budget limits:")
     for category, limit in budgets:
         spent = expense_by_category.get(category, 0.0)
-        summary_lines.append(f"  - {category}: Rs. {spent:,.2f} spent of Rs. {limit:,.2f} limit")
+        summary_lines.append(f"  - {category}: {format_currency(spent)} spent of {format_currency(limit)} limit")
 
 if goals:
-    summary_lines.append("Savings goals:")
+    summary_lines.append("Savings goals progress:")
     for _, name, target, current, target_date in goals:
-        summary_lines.append(f"  - {name}: Rs. {current:,.2f} saved of Rs. {target:,.2f} target (by {target_date or 'no date set'})")
+        summary_lines.append(f"  - {name}: {format_currency(current)} saved of {format_currency(target)} target (target date: {target_date or 'not specified'})")
 
 data_summary = "\n".join(summary_lines)
 
-with st.expander("Data being sent to the advisor"):
+with st.expander("🔍 View aggregated numbers provided to the advisor"):
     st.text(data_summary)
 
-
 # ==================================================
-# CHAT
+# CONVERSATIONAL CHAT INTERFACE
 # ==================================================
 
 section_divider()
-st.header("Ask the Advisor")
+st.subheader("💬 Ask Your Advisor")
 
 if f"advisor_messages_{user_id}" not in st.session_state:
     st.session_state[f"advisor_messages_{user_id}"] = []
@@ -116,34 +129,34 @@ for msg in st.session_state[f"advisor_messages_{user_id}"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+# Suggestion pills
+st.caption("Prompt ideas:")
 suggested = st.columns(3)
 suggestion_texts = [
-    "Where can I realistically cut back?",
-    "Am I saving enough given my income?",
-    "How should I prioritize my budgets?",
+    "Where can I realistically cut back discretionary spending?",
+    "Am I saving an adequate percentage given my current income?",
+    "How should I prioritize my monthly budget limits?",
 ]
 clicked_suggestion = None
 for col, text in zip(suggested, suggestion_texts):
-    if col.button(text, key=f"suggestion_{text}"):
+    if col.button(text, key=f"suggestion_{text}", use_container_width=True):
         clicked_suggestion = text
 
-user_input = st.chat_input("Ask about your spending, budgets, or savings goals...")
+user_input = st.chat_input("Ask a question about your spending, budget optimization, or savings...")
 prompt = clicked_suggestion or user_input
 
 if prompt:
-
     st.session_state[f"advisor_messages_{user_id}"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     system_prompt = (
-        "You are a cautious, practical personal finance assistant embedded in a budgeting app. "
-        "You will be given a summary of the user's real transaction data (in Indian Rupees) and a "
-        "question. Give specific, actionable suggestions grounded in the numbers provided. "
-        "Do not invent numbers that weren't given to you. Keep responses concise (under 200 words) "
-        "and avoid being preachy. You are not a licensed financial advisor, so avoid absolute "
-        "recommendations on investments, taxes, or legal matters — for those, suggest a qualified "
-        "professional."
+        f"You are a cautious, practical personal finance assistant embedded in a budgeting app. "
+        f"The user operates in currency {curr}. You are given an accurate summary of their real "
+        f"transaction numbers. Give concise, actionable, and grounded suggestions based strictly "
+        f"on the provided figures. Do not invent numbers that are not provided. Keep responses under "
+        f"220 words. You are not a licensed financial advisor, so avoid absolute declarations on "
+        f"investments, taxes, or legal matters."
     )
 
     system_instruction = (
@@ -183,6 +196,6 @@ if prompt:
     st.session_state[f"advisor_messages_{user_id}"].append({"role": "assistant", "content": reply_text})
 
 if st.session_state[f"advisor_messages_{user_id}"]:
-    if st.button("Clear conversation"):
+    if st.button("🗑️ Clear Conversation History"):
         st.session_state[f"advisor_messages_{user_id}"] = []
-        st.rerun()
+        st.rerun()

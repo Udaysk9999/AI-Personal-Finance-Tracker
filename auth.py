@@ -8,8 +8,8 @@ from email.message import EmailMessage
 
 import streamlit as st
 
-from database import create_user, get_user_by_email, reset_user_password, verify_user
-from utils import theme_toggle
+from database import create_user, get_user_by_email, get_user_profile, reset_user_password, verify_user
+from utils import theme_toggle, page_header, section_divider
 
 OTP_TTL_SECONDS = 5 * 60
 OTP_RESEND_COOLDOWN_SECONDS = 60
@@ -19,6 +19,10 @@ MAX_OTP_ATTEMPTS = 5
 def require_login():
     """Require an authenticated browser session before rendering private data."""
     if st.session_state.get("user_id") is not None:
+        if "user_currency" not in st.session_state:
+            from database import get_user_profile
+            prof = get_user_profile(st.session_state["user_id"])
+            st.session_state["user_currency"] = prof["currency"] if prof and prof.get("currency") else "₹"
         _render_account_sidebar()
         return st.session_state["user_id"], st.session_state["username"]
 
@@ -132,11 +136,26 @@ def _verify_otp(otp):
 
 def _render_account_sidebar():
     with st.sidebar:
+        user_name = st.session_state.get("username", "User")
+        currency = st.session_state.get("user_currency", "₹")
+        initial = user_name[0].upper() if user_name else "U"
+
+        st.markdown(
+            f"""
+            <div class="pft-user-badge">
+                <div class="pft-user-avatar">{initial}</div>
+                <div class="pft-user-info">
+                    <div class="pft-user-name">{user_name}</div>
+                    <div class="pft-user-role">Active Currency: {currency}</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         theme_toggle()
         st.markdown("---")
-        st.markdown(f"👤 Logged in as **{st.session_state['username']}**")
         if st.button("Log out", use_container_width=True, key="logout_button"):
-            for key in ("user_id", "username"):
+            for key in ("user_id", "username", "user_currency"):
                 st.session_state.pop(key, None)
             for key in list(st.session_state):
                 if key.startswith("advisor_messages_"):
@@ -148,13 +167,11 @@ def _render_login_register():
     with st.sidebar:
         theme_toggle()
 
-    st.markdown(
-        '<div class="main-title">Personal Finance Tracker</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="subtitle">Log in or create an account to see your own financial data.</div>',
-        unsafe_allow_html=True,
+    page_header(
+        "AI-Powered Personal Expense Tracker",
+        "Secure personal finance dashboard & AI budget advisor. Log in or create an account to begin.",
+        badge_text="Sign In",
+        icon="🔐",
     )
 
     if st.session_state.pop("password_reset_complete", False):
@@ -164,13 +181,13 @@ def _render_login_register():
         _render_forgot_password()
         return
 
-    login_tab, register_tab = st.tabs(["Log In", "Register"])
+    login_tab, register_tab = st.tabs(["Log In", "Create Account"])
 
     with login_tab:
         with st.form("login_form"):
             username = st.text_input("Username", key="login_username")
             password = st.text_input("Password", type="password", key="login_password")
-            submitted = st.form_submit_button("Log In", type="primary")
+            submitted = st.form_submit_button("Log In", type="primary", use_container_width=True)
             if submitted:
                 if not username or not password:
                     st.error("Please enter both a username and password.")
@@ -181,6 +198,8 @@ def _render_login_register():
                     else:
                         st.session_state["user_id"] = user["id"]
                         st.session_state["username"] = user["username"]
+                        prof = get_user_profile(user["id"])
+                        st.session_state["user_currency"] = prof["currency"] if prof and prof.get("currency") else "₹"
                         st.rerun()
         if st.button("Forgot Password?", key="forgot_password_button"):
             st.session_state["auth_view"] = "forgot"
@@ -188,11 +207,11 @@ def _render_login_register():
 
     with register_tab:
         with st.form("register_form"):
-            new_username = st.text_input("Choose a username", key="register_username")
-            new_email = st.text_input("Email address", key="register_email")
-            new_password = st.text_input("Choose a password", type="password", key="register_password")
+            new_username = st.text_input("Choose a username (min 3 chars)", key="register_username")
+            new_email = st.text_input("Email address (for password recovery)", key="register_email")
+            new_password = st.text_input("Choose a password (min 8 chars)", type="password", key="register_password")
             confirm_password = st.text_input("Confirm password", type="password", key="register_confirm")
-            submitted = st.form_submit_button("Create Account", type="primary")
+            submitted = st.form_submit_button("Create Account", type="primary", use_container_width=True)
             if submitted:
                 if not new_username or not new_email or not new_password:
                     st.error("Please fill in all fields.")
@@ -203,6 +222,7 @@ def _render_login_register():
                         user_id = create_user(new_username, new_password, new_email)
                         st.session_state["user_id"] = user_id
                         st.session_state["username"] = new_username.strip()
+                        st.session_state["user_currency"] = "₹"
                         st.rerun()
                     except ValueError as exc:
                         st.error(str(exc))

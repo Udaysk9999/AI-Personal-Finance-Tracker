@@ -65,3 +65,13 @@ def test_ai_advisor_uses_multi_turn_history():
     # Should construct Content objects for multi-turn
     assert "types.Content" in source, "Multi-turn Content construction not found"
     assert "system_instruction" in source, "system_instruction not used"
+
+
+def test_currency_formatting_and_preference():
+    """Verify format_currency correctly handles various symbols, negative numbers, and fallbacks."""
+    from utils import format_currency
+    assert format_currency(1234.56, "$") == "$1,234.56"
+    assert format_currency(-50.0, "€") == "-€50.00"
+    assert format_currency(0, "£") == "£0.00"
+    assert format_currency(None, "$") == "$0.00"
+
