@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 
 from auth import require_login
 from database import create_database, get_transactions
@@ -13,6 +14,8 @@ from utils import (
     format_currency,
     get_user_currency,
     theme_chart_colors,
+    apply_chart_theme,
+    FINANCE_COLOR_SEQUENCE,
 )
 
 st.set_page_config(page_title="Monthly Analytics", page_icon="📈", layout="wide")
@@ -24,7 +27,7 @@ curr = get_user_currency()
 
 page_header(
     "Monthly Analytics & Trends",
-    "Track cash flow trajectory, month-over-month variances, and historical income/expense records.",
+    "Track cash flow trajectory, month-over-month variances, category breakdowns, and historical records.",
     badge_text="Trends",
     icon="📈",
 )
@@ -41,6 +44,7 @@ if not transactions:
 
 df = pd.DataFrame(transactions, columns=["ID", "Date", "Type", "Category", "Amount", "Description"])
 df["Date"] = pd.to_datetime(df["Date"])
+df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0.0)
 chart_colors = theme_chart_colors()
 df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
@@ -54,47 +58,45 @@ monthly = monthly.sort_values("Month")
 monthly["Net"] = monthly["Income"] - monthly["Expense"]
 
 # ==================================================
-# TREND CHART
+# CASH FLOW TRAJECTORY CHART
 # ==================================================
 
 st.subheader("Cash Flow Trajectory (Income vs. Expenses)")
 
-fig = go.Figure()
-fig.add_trace(
+fig_flow = go.Figure()
+fig_flow.add_trace(
     go.Scatter(
         x=monthly["Month"],
         y=monthly["Income"],
         name="Income",
         mode="lines+markers",
-        line=dict(color="#10b981", width=3),
-        marker=dict(size=7),
+        line=dict(color="#10b981", width=3, shape="spline"),
+        marker=dict(size=8, color="#10b981"),
+        hovertemplate="<b>Income</b><br>%{x}: " + curr + "%{y:,.2f}<extra></extra>",
     )
 )
-fig.add_trace(
+fig_flow.add_trace(
     go.Scatter(
         x=monthly["Month"],
         y=monthly["Expense"],
         name="Expense",
         mode="lines+markers",
-        line=dict(color="#f43f5e", width=3),
-        marker=dict(size=7),
+        line=dict(color="#f43f5e", width=3, shape="spline"),
+        marker=dict(size=8, color="#f43f5e"),
+        hovertemplate="<b>Expense</b><br>%{x}: " + curr + "%{y:,.2f}<extra></extra>",
     )
 )
-
-fig.update_layout(
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color=chart_colors["font"]),
-    xaxis=dict(title="Month", showgrid=False, color=chart_colors["axis"]),
-    yaxis=dict(title=f"Amount ({curr})", gridcolor=chart_colors["grid"], color=chart_colors["axis"]),
-    legend=dict(font=dict(color=chart_colors["legend"])),
-    margin=dict(l=20, r=20, t=30, b=20),
+apply_chart_theme(
+    fig_flow,
+    height=340,
+    title="Monthly Cash Flow Over Time",
+    x_title="Billing Month",
+    y_title=f"Amount ({curr})",
 )
-
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig_flow, use_container_width=True)
 
 # ==================================================
-# MONTH-OVER-MONTH COMPARISON
+# MONTH-OVER-MONTH VARIANCE METRICS
 # ==================================================
 
 section_divider()
@@ -158,11 +160,80 @@ else:
                 f"**Great Job:** Your expenses decreased by **{abs(expense_change):.1f}%** in {current['Month']} compared to {previous['Month']}."
             )
 
+section_divider()
+
+# ==================================================
+# TWO-COLUMN ANALYTICS: NET SURPLUS & STACKED CATEGORIES
+# ==================================================
+
+st.subheader("Monthly Savings & Category Spending Breakdown")
+
+c_col1, c_col2 = st.columns([1.1, 1.2])
+
+with c_col1:
+    # Monthly Net Savings / Deficit Bar Chart
+    net_colors = ["#10b981" if val >= 0 else "#f43f5e" for val in monthly["Net"]]
+    fig_net = go.Figure()
+    fig_net.add_trace(
+        go.Bar(
+            x=monthly["Month"],
+            y=monthly["Net"],
+            marker_color=net_colors,
+            marker_line_width=0,
+            hovertemplate="<b>Net Savings</b><br>%{x}: " + curr + "%{y:,.2f}<extra></extra>",
+        )
+    )
+    apply_chart_theme(
+        fig_net,
+        height=330,
+        title="Monthly Net Savings / Surplus",
+        x_title="Month",
+        y_title=f"Net Surplus ({curr})",
+        show_legend=False,
+    )
+    st.plotly_chart(fig_net, use_container_width=True)
+
+with c_col2:
+    # Stacked Monthly Category Spend
+    expense_df = df[df["Type"] == "Expense"]
+    if not expense_df.empty:
+        cat_monthly = (
+            expense_df.groupby(["Month", "Category"])["Amount"]
+            .sum()
+            .unstack(fill_value=0)
+            .reset_index()
+        )
+        fig_stack = go.Figure()
+        categories = [col for col in cat_monthly.columns if col != "Month"]
+        for idx, cat in enumerate(categories):
+            color = FINANCE_COLOR_SEQUENCE[idx % len(FINANCE_COLOR_SEQUENCE)]
+            fig_stack.add_trace(
+                go.Bar(
+                    x=cat_monthly["Month"],
+                    y=cat_monthly[cat],
+                    name=cat,
+                    marker_color=color,
+                    hovertemplate=f"<b>{cat}</b><br>%{{x}}: " + curr + "%{y:,.2f}<extra></extra>",
+                )
+            )
+        apply_chart_theme(
+            fig_stack,
+            height=330,
+            title="Monthly Expense Breakdown by Category",
+            x_title="Month",
+            y_title=f"Spent ({curr})",
+            barmode="stack",
+        )
+        st.plotly_chart(fig_stack, use_container_width=True)
+    else:
+        st.info("No expense data recorded to build category breakdown chart.")
+
+section_divider()
+
 # ==================================================
 # MONTHLY BREAKDOWN TABLE
 # ==================================================
 
-section_divider()
 st.subheader("Monthly Historical Breakdown")
 
 display_monthly = monthly.copy()

@@ -9,6 +9,7 @@ from database import (
     get_transactions,
     delete_transaction,
     add_transaction,
+    update_transaction,
     get_budgets,
     get_savings_goals,
     set_budget,
@@ -48,12 +49,18 @@ page_header(
 # Toast notifications
 if "show_success" not in st.session_state:
     st.session_state.show_success = False
+if "show_edit_success" not in st.session_state:
+    st.session_state.show_edit_success = False
 if "show_delete_success" not in st.session_state:
     st.session_state.show_delete_success = False
 
 if st.session_state.show_success:
     st.success("Transaction added successfully.")
     st.session_state.show_success = False
+
+if st.session_state.show_edit_success:
+    st.success("Transaction updated successfully.")
+    st.session_state.show_edit_success = False
 
 if st.session_state.show_delete_success:
     st.success("Transaction deleted successfully.")
@@ -294,28 +301,71 @@ else:
         empty_state("No Matching Transactions", "Try broadening your search term or date range filter.", icon="🔍")
     else:
         # Table Header
-        header_cols = st.columns([0.7, 1.2, 1.1, 1.4, 1.4, 2.5, 0.7])
-        labels = ["ID", "Date", "Type", "Category", "Amount", "Description", "Action"]
+        header_cols = st.columns([0.7, 1.2, 1.1, 1.4, 1.4, 2.3, 1.1])
+        labels = ["ID", "Date", "Type", "Category", "Amount", "Description", "Actions"]
         for col, label in zip(header_cols, labels):
             col.markdown(f"**{label}**")
         st.markdown("<hr style='margin: 4px 0 10px 0; border: none; border-top: 1px solid var(--pft-border);' />", unsafe_allow_html=True)
 
         # Table Rows
         for _, row in filtered_df.iterrows():
-            row_cols = st.columns([0.7, 1.2, 1.1, 1.4, 1.4, 2.5, 0.7])
+            row_id = int(row["ID"])
+            is_editing = st.session_state.get("editing_tx_id") == row_id
+
+            row_cols = st.columns([0.7, 1.2, 1.1, 1.4, 1.4, 2.3, 1.1])
             is_inc = row["Type"] == "Income"
             amt_color = "#10b981" if is_inc else "#f43f5e"
             type_badge = f"<span class='pft-badge {'pft-badge-emerald' if is_inc else 'pft-badge-rose'}'>{row['Type']}</span>"
 
-            row_cols[0].write(f"#{int(row['ID'])}")
+            row_cols[0].write(f"#{row_id}")
             row_cols[1].write(row["Date"].strftime("%d %b %Y"))
             row_cols[2].markdown(type_badge, unsafe_allow_html=True)
             row_cols[3].write(row["Category"])
             row_cols[4].markdown(f"<span style='color:{amt_color}; font-weight:700;'>{format_currency(row['Amount'])}</span>", unsafe_allow_html=True)
             row_cols[5].write(row["Description"] if row["Description"] else "—")
 
-            if row_cols[6].button("🗑️", key=f"del_{row['ID']}", help="Delete transaction"):
-                delete_transaction(user_id, int(row["ID"]))
-                st.session_state.show_delete_success = True
-                st.rerun()
+            btn_c1, btn_c2 = row_cols[6].columns(2)
+            with btn_c1:
+                if st.button("✏️", key=f"edit_btn_{row_id}", help="Edit transaction"):
+                    st.session_state["editing_tx_id"] = row_id
+                    st.rerun()
+            with btn_c2:
+                if st.button("🗑️", key=f"del_{row_id}", help="Delete transaction"):
+                    delete_transaction(user_id, row_id)
+                    st.session_state.show_delete_success = True
+                    st.rerun()
+
+            # Inline edit form if this row is selected for editing
+            if is_editing:
+                with st.container():
+                    st.markdown(f"##### ✏️ Edit Transaction #{row_id}")
+                    with st.form(f"inline_edit_form_{row_id}"):
+                        ec1, ec2, ec3 = st.columns(3)
+                        with ec1:
+                            e_date = st.date_input("Date", row["Date"].date(), key=f"e_date_{row_id}")
+                            e_type = st.selectbox("Type", ["Expense", "Income"], index=0 if row["Type"] == "Expense" else 1, key=f"e_type_{row_id}")
+                        with ec2:
+                            e_cats = EXPENSE_CATEGORIES if e_type == "Expense" else INCOME_CATEGORIES
+                            e_cur_cat = row["Category"]
+                            e_cat_idx = e_cats.index(e_cur_cat) if e_cur_cat in e_cats else 0
+                            e_category = st.selectbox("Category", e_cats, index=e_cat_idx, key=f"e_cat_{row_id}")
+                            e_amount = st.number_input(f"Amount ({curr})", min_value=0.01, value=float(row["Amount"]), step=100.0, format="%.2f", key=f"e_amt_{row_id}")
+                        with ec3:
+                            e_desc = st.text_input("Description", value=row["Description"] or "", key=f"e_desc_{row_id}")
+
+                        eb1, eb2 = st.columns([1, 1])
+                        with eb1:
+                            save_edit = st.form_submit_button("Save Changes", type="primary", use_container_width=True)
+                        with eb2:
+                            cancel_edit = st.form_submit_button("Cancel", use_container_width=True)
+
+                        if save_edit:
+                            update_transaction(user_id, row_id, str(e_date), e_type, e_category, e_amount, e_desc.strip())
+                            st.session_state.pop("editing_tx_id", None)
+                            st.session_state["show_edit_success"] = True
+                            st.rerun()
+                        if cancel_edit:
+                            st.session_state.pop("editing_tx_id", None)
+                            st.rerun()
+
             st.markdown("<hr style='margin: 4px 0; border: none; border-top: 1px solid var(--pft-border); opacity: 0.5;' />", unsafe_allow_html=True)

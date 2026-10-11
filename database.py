@@ -244,6 +244,18 @@ def get_transactions(user_id):
         """, (user_id,)).fetchall()
 
 
+def update_transaction(user_id, transaction_id, transaction_date, transaction_type, category, amount, description):
+    """Update an existing transaction strictly owned by user_id."""
+    with get_connection() as conn:
+        cursor = conn.execute("""
+            UPDATE transactions
+            SET date = ?, type = ?, category = ?, amount = ?, description = ?
+            WHERE id = ? AND user_id = ?
+        """, (transaction_date, transaction_type, category, amount, description, transaction_id, user_id))
+        conn.commit()
+        return cursor.rowcount == 1
+
+
 def delete_transaction(user_id, transaction_id):
     with get_connection() as conn:
         conn.execute("DELETE FROM transactions WHERE id = ? AND user_id = ?", (transaction_id, user_id))

@@ -11,15 +11,16 @@ from utils import (
     empty_state,
     format_currency,
     get_user_currency,
+    metric_card,
 )
 from advisor_engine import (
     load_gemini_api_key,
     build_financial_context,
     format_context_for_prompt,
     get_advisor_system_instruction,
+    generate_advisor_reply,
+    DEFAULT_GEMINI_MODEL,
 )
-
-DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 st.set_page_config(page_title="AI Financial Advisor", page_icon="🤖", layout="wide")
 inject_css()
@@ -30,7 +31,7 @@ curr = get_user_currency()
 
 page_header(
     "AI Financial Advisor",
-    "Personalized, cautious financial intelligence and budget optimization grounded in your real numbers.",
+    "Personalized, accurate, and actionable financial guidance grounded in your real financial data.",
     badge_text="Gemini 3.8",
     icon="🤖",
 )
@@ -73,7 +74,7 @@ except ImportError:
     st.stop()
 
 # ==================================================
-# BUILD FINANCIAL CONTEXT & SUMMARY
+# BUILD REAL FINANCIAL DATA SNAPSHOT
 # ==================================================
 
 ctx = build_financial_context(user_id, curr=curr)
@@ -81,13 +82,49 @@ ctx = build_financial_context(user_id, curr=curr)
 if not ctx.get("has_data"):
     empty_state(
         "No Transactions Recorded Yet",
-        "Record income or expenses on the Transaction Management page first so the advisor has data to evaluate.",
+        "Record income or expenses on the Transaction Management page first so the advisor has real numbers to evaluate.",
         icon="💳",
     )
     st.stop()
 
 data_summary = format_context_for_prompt(ctx)
 system_instruction = get_advisor_system_instruction(curr=curr, data_summary=data_summary)
+
+# Display deterministic financial summary cards
+st.subheader("Financial Snapshot Grounding the Advisor")
+sn_col1, sn_col2, sn_col3, sn_col4 = st.columns(4)
+with sn_col1:
+    metric_card(
+        "Total Income",
+        format_currency(ctx["total_income"], curr),
+        accent="emerald",
+        icon="📈",
+        help_text=f"Month: {format_currency(ctx['current_month_income'], curr)}",
+    )
+with sn_col2:
+    metric_card(
+        "Total Expenses",
+        format_currency(ctx["total_expenses"], curr),
+        accent="rose",
+        icon="📉",
+        help_text=f"Month: {format_currency(ctx['current_month_expense'], curr)}",
+    )
+with sn_col3:
+    metric_card(
+        "Net Balance",
+        format_currency(ctx["net_balance"], curr),
+        accent="indigo" if ctx["net_balance"] >= 0 else "rose",
+        icon="💳",
+        help_text=f"Month Surplus: {format_currency(ctx['current_month_net'], curr)}",
+    )
+with sn_col4:
+    metric_card(
+        "Savings Rate",
+        f"{ctx['savings_rate']:.1f}%",
+        accent="cyan" if ctx["savings_rate"] >= 20 else "amber",
+        icon="🎯",
+        help_text=f"This Month: {ctx['current_month_savings_rate']:.1f}%",
+    )
 
 with st.expander("🔍 View deterministic financial data supplied to the advisor", expanded=False):
     st.markdown("```text\n" + data_summary + "\n```")
@@ -97,11 +134,18 @@ with st.expander("🔍 View deterministic financial data supplied to the advisor
 # ==================================================
 
 section_divider()
-st.subheader("💬 Ask Your Financial Advisor")
 
-history_key = f"advisor_messages_{user_id}"
-if history_key not in st.session_state:
-    st.session_state[history_key] = []
+chat_hdr_col1, chat_hdr_col2 = st.columns([3, 1])
+with chat_hdr_col1:
+    st.subheader("💬 Ask Your Financial Advisor")
+with chat_hdr_col2:
+    history_key = f"advisor_messages_{user_id}"
+    if history_key not in st.session_state:
+        st.session_state[history_key] = []
+    if st.session_state[history_key]:
+        if st.button("🔄 Start New Conversation", key="clear_chat_top", use_container_width=True):
+            st.session_state[history_key] = []
+            st.rerun()
 
 # Display conversation history
 for msg in st.session_state[history_key]:
@@ -109,25 +153,33 @@ for msg in st.session_state[history_key]:
         st.markdown(msg["content"])
 
 # Quick example question pills grounded in core advisor capabilities
-st.caption("Common inquiries:")
-q_cols = st.columns(5)
-questions = [
-    "Where am I spending the most?",
-    "Which expenses could I reduce?",
-    "Which category is closest to its budget limit?",
-    f"How can I save {curr}2,000 next month?",
-    "How much should I save monthly for my goals?",
+st.caption("Common inquiries (click to ask):")
+q_rows = [
+    [
+        "Analyze my spending this month.",
+        "Which category is costing me the most?",
+        "Where can I reduce my expenses?",
+    ],
+    [
+        "Am I overspending compared with last month?",
+        "How much can I realistically save next month?",
+        "Which budgets are close to their limits?",
+        "Suggest a savings plan based on my income and expenses.",
+    ],
 ]
+
 clicked_question = None
-for col, q_text in zip(q_cols, questions):
-    if col.button(q_text, key=f"q_btn_{q_text}", use_container_width=True):
-        clicked_question = q_text
+for row_questions in q_rows:
+    cols = st.columns(len(row_questions))
+    for col, q_text in zip(cols, row_questions):
+        if col.button(q_text, key=f"q_btn_{q_text}", use_container_width=True):
+            clicked_question = q_text
 
 user_input = st.chat_input("Ask about your spending, budget warnings, goal planning, or savings...")
-prompt = clicked_question or user_input
+prompt = (clicked_question or user_input or "").strip()
 
 if prompt:
-    # Append user turn
+    # Append user turn to session history
     st.session_state[history_key].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -145,38 +197,16 @@ if prompt:
         )
 
     with st.chat_message("assistant"):
-        placeholder = st.empty()
         with st.spinner("Analyzing your finances with AI..."):
-            try:
-                client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model=DEFAULT_GEMINI_MODEL,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_instruction,
-                    ),
-                )
-                reply_text = response.text.strip() if (response and response.text) else "I reviewed your figures, but could not produce a response. Please try rephrasing your question."
-            except Exception as exc:
-                err_str = str(exc)
-                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str.upper():
-                    reply_text = "⚠️ **Quota Limit Reached:** The Gemini API free-tier rate limit has been temporarily reached. Please wait a minute before sending your next inquiry."
-                elif "404" in err_str:
-                    reply_text = f"⚠️ **Model Availability Error:** {err_str}. Please verify that '{DEFAULT_GEMINI_MODEL}' is accessible for your API key."
-                elif "503" in err_str or "UNAVAILABLE" in err_str.upper():
-                    reply_text = "⚠️ **High Server Demand (503):** The Gemini model is currently experiencing high temporary demand on Google's servers. Please try sending your inquiry again in a few moments."
-                elif "API_KEY" in err_str.upper() or "403" in err_str or "UNAUTHENTICATED" in err_str.upper():
-                    reply_text = "⚠️ **Authentication Error:** The provided Gemini API key appears invalid or expired. Please check your key in `.env` or Google AI Studio."
-                else:
-                    reply_text = f"⚠️ **Service Disruption:** Could not reach the Gemini API at this time ({err_str}). Your underlying financial data remains safe."
+            reply_text, err = generate_advisor_reply(
+                api_key=api_key,
+                contents=contents,
+                system_instruction=system_instruction,
+                model_name=DEFAULT_GEMINI_MODEL,
+                max_retries=2,
+            )
+        st.markdown(reply_text)
 
-        placeholder.markdown(reply_text)
-
-    # Append assistant turn
+    # Append assistant turn to session history
     st.session_state[history_key].append({"role": "assistant", "content": reply_text})
-
-if st.session_state[history_key]:
-    st.write("")
-    if st.button("🗑️ Clear Conversation History", help="Reset chat memory for this account"):
-        st.session_state[history_key] = []
-        st.rerun()
+    st.rerun()

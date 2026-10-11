@@ -111,7 +111,7 @@ if alerts:
 profile = get_user_profile(user_id)
 health = financial_health_score(transactions, budgets, goals)
 prediction = predict_next_month_expenses(transactions)
-report = build_report_pdf(profile["username"], transactions, budgets, goals, health, prediction, alerts)
+report = build_report_pdf(profile["username"], transactions, budgets, goals, health, prediction, alerts, currency=curr)
 
 st.download_button(
     "📄 Download Monthly PDF Financial Report",

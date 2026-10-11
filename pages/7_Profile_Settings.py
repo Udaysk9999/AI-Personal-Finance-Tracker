@@ -26,13 +26,15 @@ page_header(
 
 # Overview metrics
 tx_count = len(get_transactions(user_id))
-m_col1, m_col2, m_col3 = st.columns(3)
+m_col1, m_col2, m_col3, m_col4 = st.columns(4)
 with m_col1:
     metric_card("Username", profile["username"], accent="indigo", icon="👤")
 with m_col2:
-    metric_card("Active Currency", profile["currency"], accent="emerald", icon="💱")
+    metric_card("Account Email", profile["email"] if profile.get("email") else "Not configured", accent="cyan", icon="✉️")
 with m_col3:
-    metric_card("Total Records", f"{tx_count} transactions", accent="cyan", icon="📊")
+    metric_card("Active Currency", profile["currency"], accent="emerald", icon="💱")
+with m_col4:
+    metric_card("Total Records", f"{tx_count} records", accent="amber", icon="📊")
 
 section_divider()
 

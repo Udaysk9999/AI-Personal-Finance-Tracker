@@ -86,3 +86,32 @@ def test_cross_user_operations_are_noop():
     assert database.get_budgets(alice) == [("Food", 10000.0)]
     assert database.get_savings_goals(alice)[0][3] == 0.0  # current_amount unchanged
     assert len(database.get_savings_goals(alice)) == 1
+
+
+def test_transaction_update_and_isolation():
+    alice = database.create_user("alice_update", "alice-password")
+    bob = database.create_user("bob_update", "bob-password")
+
+    database.add_transaction(alice, "2026-09-01", "Expense", "Food", 500.0, "Alice lunch")
+    alice_txn = database.get_transactions(alice)[0]
+    alice_txn_id = alice_txn[0]
+
+    # Alice successfully updates her transaction
+    updated = database.update_transaction(alice, alice_txn_id, "2026-09-02", "Expense", "Groceries", 650.0, "Alice dinner")
+    assert updated is True
+    alice_updated_txns = database.get_transactions(alice)
+    assert len(alice_updated_txns) == 1
+    assert alice_updated_txns[0][1] == "2026-09-02"
+    assert alice_updated_txns[0][2] == "Expense"
+    assert alice_updated_txns[0][3] == "Groceries"
+    assert alice_updated_txns[0][4] == 650.0
+    assert alice_updated_txns[0][5] == "Alice dinner"
+
+    # Bob tries to maliciously edit Alice's transaction - must fail and be no-op
+    bob_attempt = database.update_transaction(bob, alice_txn_id, "2026-09-03", "Income", "Salary", 999999.0, "Hacked")
+    assert bob_attempt is False
+    # Verify Alice's transaction was not changed
+    alice_verify = database.get_transactions(alice)[0]
+    assert alice_verify[4] == 650.0
+    assert alice_verify[5] == "Alice dinner"
+

@@ -1,4 +1,17 @@
 finance_tracker.db
+*.db
+*.db-journal
+*.db-wal
+*.sqlite*
 __pycache__/
+*.pyc
 .env
 .streamlit/secrets.toml
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+*.pdf
+.DS_Store
+Thumbs.db

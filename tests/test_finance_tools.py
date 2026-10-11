@@ -42,3 +42,16 @@ def test_build_report_pdf():
     pdf = build_report_pdf("test-user", transactions, budgets, goals, health, prediction, alerts)
     assert pdf.startswith(b"%PDF")
     assert len(pdf) > 100
+
+
+def test_build_report_pdf_custom_currency():
+    transactions = [(1, "2026-09-01", "Expense", "Groceries", 150.0, "Supermarket")]
+    budgets = [("Groceries", 500.0)]
+    goals = []
+    health = {"score": 80, "factors": {}, "suggestions": []}
+    prediction = {"status": "ok", "amount": 180.0}
+    alerts = [{"category": "Groceries", "spent": 150.0, "limit": 500.0, "percent": 0.3, "level": "info"}]
+    pdf = build_report_pdf("john_doe", transactions, budgets, goals, health, prediction, alerts, currency="$")
+    assert pdf.startswith(b"%PDF")
+    assert len(pdf) > 100
+

@@ -1,12 +1,13 @@
 """
 Unit and integration tests for advisor_engine module.
 Validates deterministic calculations, savings goal plans, budget status,
-user isolation, and prompt generation.
+user isolation, prompt generation, MoM comparisons, and API resilience.
 """
 
 import tempfile
 from pathlib import Path
 from datetime import date, timedelta
+from unittest.mock import MagicMock, patch
 
 import database
 from advisor_engine import (
@@ -15,6 +16,9 @@ from advisor_engine import (
     format_context_for_prompt,
     get_advisor_system_instruction,
     load_gemini_api_key,
+    generate_advisor_reply,
+    DISCRETIONARY_CATEGORIES,
+    ESSENTIAL_CATEGORIES,
 )
 
 
@@ -97,6 +101,12 @@ def test_build_financial_context_and_isolation():
     assert ctx1["curr"] == "$"
     assert len(ctx1["category_spending"]) == 2
 
+    # Current month metrics
+    assert ctx1["current_month_income"] == 50000.0
+    assert ctx1["current_month_expense"] == 27000.0
+    assert ctx1["current_month_net"] == 23000.0
+    assert ctx1["current_month_top_category"]["category"] == "Rent"
+
     # Check budget analysis: Food is 120% (over budget), so it must be ranked first
     assert len(ctx1["budget_analysis"]) == 2
     assert ctx1["budget_analysis"][0]["category"] == "Food"
@@ -109,6 +119,11 @@ def test_build_financial_context_and_isolation():
     assert goal_res["name"] == "Emergency Fund"
     assert goal_res["remaining"] == 50000.0
     assert goal_res["required_per_month"] is not None
+
+    # Realistic savings capacity
+    assert ctx1["realistic_savings_capacity"]["available_surplus"] == 23000.0
+    assert ctx1["realistic_savings_capacity"]["conservative"] == 11500.0
+    assert ctx1["realistic_savings_capacity"]["moderate"] == 17250.0
 
     # Verify User 2 context is strictly isolated
     ctx2 = build_financial_context(u2, curr="€")
@@ -128,6 +143,56 @@ def test_build_financial_context_empty():
     assert ctx["total_income"] == 0.0
     assert ctx["total_expenses"] == 0.0
     assert ctx["category_spending"] == []
+    assert ctx["mom_comparison"]["available"] is False
+
+
+def test_mom_comparison_calculation():
+    """Verify month-over-month comparisons are calculated deterministically across consecutive months."""
+    u_mom = database.create_user("user_mom", "password123")
+    today = date.today()
+    # Compute a date in the previous calendar month
+    prev_year = today.year if today.month > 1 else today.year - 1
+    prev_month_num = today.month - 1 if today.month > 1 else 12
+    prev_date_str = date(prev_year, prev_month_num, 15).isoformat()
+    cur_date_str = date(today.year, today.month, 10).isoformat()
+
+    # Prior month: Income 40,000, Expense 20,000
+    database.add_transaction(u_mom, prev_date_str, "Income", "Salary", 40000.0, "Prior salary")
+    database.add_transaction(u_mom, prev_date_str, "Expense", "Bills", 20000.0, "Prior bills")
+
+    # Current month: Income 45,000, Expense 25,000 (spent 5,000 more -> +25%)
+    database.add_transaction(u_mom, cur_date_str, "Income", "Salary", 45000.0, "Current salary")
+    database.add_transaction(u_mom, cur_date_str, "Expense", "Food", 25000.0, "Current food")
+
+    ctx = build_financial_context(u_mom, curr="₹")
+    mom = ctx["mom_comparison"]
+    assert mom["available"] is True
+    assert mom["prev_expense"] == 20000.0
+    assert mom["expense_diff"] == 5000.0
+    assert mom["expense_pct_change"] == 25.0
+    assert mom["is_overspending"] is True
+    assert mom["income_diff"] == 5000.0
+    assert mom["income_pct_change"] == 12.5
+
+
+def test_essential_vs_discretionary_calculation():
+    """Verify that categories are accurately grouped into essential vs discretionary."""
+    u_evd = database.create_user("user_evd", "password123")
+    today_str = date.today().isoformat()
+
+    # Discretionary: Food (8,000) + Shopping (4,000) = 12,000
+    database.add_transaction(u_evd, today_str, "Expense", "Food", 8000.0, "Restaurants")
+    database.add_transaction(u_evd, today_str, "Expense", "Shopping", 4000.0, "Clothes")
+
+    # Essential: Rent (20,000) + Bills (8,000) = 28,000
+    database.add_transaction(u_evd, today_str, "Expense", "Rent", 20000.0, "Home rent")
+    database.add_transaction(u_evd, today_str, "Expense", "Bills", 8000.0, "Electricity")
+
+    ctx = build_financial_context(u_evd, curr="₹")
+    evd = ctx["essential_vs_discretionary"]
+    assert evd["discretionary_amount"] == 12000.0
+    assert evd["essential_amount"] == 28000.0
+    assert abs(evd["discretionary_pct"] - 30.0) < 0.1  # 12k / 40k = 30%
 
 
 def test_format_context_for_prompt():
@@ -138,12 +203,32 @@ def test_format_context_for_prompt():
         "total_expenses": 35000.0,
         "net_balance": 45000.0,
         "savings_rate": 56.25,
+        "current_month_name": "October 2026",
+        "current_month_income": 80000.0,
         "current_month_expense": 35000.0,
-        "category_spending": [
+        "current_month_net": 45000.0,
+        "current_month_savings_rate": 56.25,
+        "current_month_categories": [
             {"category": "Food", "amount": 20000.0, "percent": 57.1},
             {"category": "Bills", "amount": 15000.0, "percent": 42.9},
         ],
-        "highest_category": {"category": "Food", "amount": 20000.0},
+        "current_month_top_category": {"category": "Food", "amount": 20000.0},
+        "mom_comparison": {
+            "available": True,
+            "current_month_name": "October 2026",
+            "previous_month_name": "September 2026",
+            "prev_expense": 30000.0,
+            "prev_income": 75000.0,
+            "expense_diff": 5000.0,
+            "expense_pct_change": 16.7,
+            "income_diff": 5000.0,
+            "is_overspending": True,
+        },
+        "essential_vs_discretionary": {
+            "discretionary_amount": 20000.0,
+            "essential_amount": 15000.0,
+            "discretionary_pct": 57.1,
+        },
         "budget_analysis": [
             {
                 "category": "Food",
@@ -165,6 +250,17 @@ def test_format_context_for_prompt():
                 "required_per_month": 6666.67,
             }
         ],
+        "realistic_savings_capacity": {
+            "available_surplus": 45000.0,
+            "conservative": 22500.0,
+            "moderate": 33750.0,
+            "aggressive": 40500.0,
+            "total_goal_demand": 6666.67,
+            "feasibility": "comfortable",
+        },
+        "recent_transactions": [
+            {"date": "10 Oct 2026", "type": "Expense", "category": "Food", "amount": 500.0, "description": "Lunch"}
+        ],
         "ml_insights": {
             "health_score": 75,
             "health_suggestions": ["Keep saving regularly"],
@@ -182,6 +278,8 @@ def test_format_context_for_prompt():
     assert "OVER BUDGET" in summary_text
     assert "Trip" in summary_text
     assert "Health Score: 75/100" in summary_text
+    assert "Conservative" in summary_text
+    assert "Discretionary" in summary_text
 
     system_instruction = get_advisor_system_instruction("₹", summary_text)
     assert "AI Personal Financial Advisor" in system_instruction
@@ -189,6 +287,29 @@ def test_format_context_for_prompt():
 
 
 def test_load_gemini_api_key_safe():
-    # Calling load_gemini_api_key should return a string or None, and never crash
     key = load_gemini_api_key()
     assert key is None or isinstance(key, str)
+
+
+def test_generate_advisor_reply_missing_key():
+    reply, err = generate_advisor_reply(api_key=None, contents=[], system_instruction="")
+    assert reply == ""
+    assert "Missing Gemini API key" in err
+
+
+def test_generate_advisor_reply_simulated_error():
+    """Verify that API exceptions return clean, safe error messages without leaking secrets."""
+    with patch("google.genai.Client") as mock_client_cls:
+        mock_instance = MagicMock()
+        mock_instance.models.generate_content.side_effect = Exception("429 RESOURCE_EXHAUSTED: Rate limit exceeded")
+        mock_client_cls.return_value = mock_instance
+
+        reply, err = generate_advisor_reply(
+            api_key="dummy_key",
+            contents=[],
+            system_instruction="sys",
+            max_retries=0,
+        )
+        assert "Quota Limit Reached" in reply
+        assert "Rate limit" in err
+        assert "dummy_key" not in reply

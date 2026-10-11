@@ -104,7 +104,7 @@ def theme_chart_colors() -> dict:
             "font": "#0f172a",
             "title": "#0f172a",
             "axis": "#64748b",
-            "grid": "#e2e8f0",
+            "grid": "rgba(15, 23, 42, 0.07)",
             "legend": "#334155",
             "marker_line": "#ffffff",
         }
@@ -112,10 +112,90 @@ def theme_chart_colors() -> dict:
         "font": "#e2e8f0",
         "title": "#f8fafc",
         "axis": "#94a3b8",
-        "grid": "#1e293b",
+        "grid": "rgba(255, 255, 255, 0.07)",
         "legend": "#cbd5e1",
-        "marker_line": "#090d16",
+        "marker_line": "#0b0f19",
     }
+
+
+def apply_chart_theme(
+    fig,
+    height: int = 350,
+    title: str = None,
+    x_title: str = None,
+    y_title: str = None,
+    show_legend: bool = True,
+    barmode: str = None,
+):
+    """
+    Applies unified, premium fintech styling and tooltip layout to any Plotly figure.
+    Adapts seamlessly to dark and light modes with high contrast and readable typography.
+    """
+    theme = _current_theme()
+    c = theme_chart_colors()
+
+    hover_bg = "#111827" if theme == "dark" else "#ffffff"
+    hover_border = "rgba(99, 102, 241, 0.3)" if theme == "dark" else "rgba(99, 102, 241, 0.3)"
+    hover_font = "#f8fafc" if theme == "dark" else "#0f172a"
+
+    layout_updates = {
+        "height": height,
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "font": dict(color=c["font"], family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", size=12),
+        "showlegend": show_legend,
+        "legend": dict(
+            font=dict(color=c["legend"], size=11),
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        "hoverlabel": dict(
+            bgcolor=hover_bg,
+            bordercolor=hover_border,
+            font=dict(color=hover_font, size=12, family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"),
+        ),
+        "margin": dict(l=24, r=24, t=55 if title else 25, b=25),
+    }
+
+    if barmode:
+        layout_updates["barmode"] = barmode
+
+    if title:
+        layout_updates["title"] = dict(
+            text=f"<b>{title}</b>",
+            font=dict(size=15, color=c["title"], family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"),
+            x=0,
+            xanchor="left",
+            y=0.98,
+        )
+
+    xaxis_dict = dict(
+        showgrid=False,
+        color=c["axis"],
+        zeroline=False,
+        tickfont=dict(size=11, color=c["axis"]),
+    )
+    if x_title is not None:
+        xaxis_dict["title"] = dict(text=x_title, font=dict(size=11, color=c["axis"]))
+    layout_updates["xaxis"] = xaxis_dict
+
+    yaxis_dict = dict(
+        gridcolor=c["grid"],
+        color=c["axis"],
+        zeroline=True,
+        zerolinecolor=c["grid"],
+        tickfont=dict(size=11, color=c["axis"]),
+    )
+    if y_title is not None:
+        yaxis_dict["title"] = dict(text=y_title, font=dict(size=11, color=c["axis"]))
+    layout_updates["yaxis"] = yaxis_dict
+
+    fig.update_layout(**layout_updates)
+    return fig
 
 
 def theme_toggle(key: str = "pft_theme_toggle"):
@@ -493,6 +573,40 @@ def inject_css():
         .pft-user-role {{
             font-size: 0.75rem;
             color: var(--pft-text-muted);
+        }}
+
+        /* Progress Bar Enhancements */
+        div[data-testid="stProgress"] > div {{
+            background-color: var(--pft-surface-muted) !important;
+            border-radius: 9999px !important;
+            height: 9px !important;
+            overflow: hidden !important;
+            border: 1px solid var(--pft-border) !important;
+        }}
+        div[data-testid="stProgress"] > div > div > div > div {{
+            background: linear-gradient(90deg, #6366f1 0%, #10b981 100%) !important;
+            border-radius: 9999px !important;
+        }}
+
+        /* Modern Expanders */
+        div[data-testid="stExpander"] {{
+            background: var(--pft-surface) !important;
+            border: 1px solid var(--pft-border) !important;
+            border-radius: 12px !important;
+            box-shadow: var(--pft-shadow-sm) !important;
+            margin-bottom: 12px !important;
+        }}
+        div[data-testid="stExpander"] summary {{
+            font-weight: 600 !important;
+            color: var(--pft-text-primary) !important;
+        }}
+
+        /* Modern Tabs */
+        button[data-baseweb="tab"] {{
+            font-weight: 600 !important;
+            font-size: 0.92rem !important;
+            padding: 8px 16px !important;
+            border-radius: 8px 8px 0 0 !important;
         }}
 
         /* Responsive Layout Overrides */

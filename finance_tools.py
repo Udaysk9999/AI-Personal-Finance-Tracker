@@ -187,7 +187,7 @@ def budget_alerts(
     return alerts
 
 
-def build_report_pdf(username, transactions, budgets, goals, health, prediction, alerts):
+def build_report_pdf(username, transactions, budgets, goals, health, prediction, alerts, currency: str = "₹"):
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -215,19 +215,19 @@ def build_report_pdf(username, transactions, budgets, goals, health, prediction,
     expenses = float(df.loc[df["Type"] == "Expense", "Amount"].sum()) if not df.empty else 0
     story.append(
         Paragraph(
-            f"<b>Summary</b><br/>Income: ₹{income:,.2f}<br/>Expenses: ₹{expenses:,.2f}<br/>Balance: ₹{income-expenses:,.2f}",
+            f"<b>Summary</b><br/>Income: {currency}{income:,.2f}<br/>Expenses: {currency}{expenses:,.2f}<br/>Balance: {currency}{income-expenses:,.2f}",
             styles["Heading2"],
         )
     )
     if health.get("score") is not None:
         story.append(Paragraph(f"Financial Health Score: {health['score']}/100", styles["Heading2"]))
     if prediction.get("status") == "ok":
-        story.append(Paragraph(f"Predicted next-month expenses: ₹{prediction['amount']:,.2f}", styles["Normal"]))
+        story.append(Paragraph(f"Predicted next-month expenses: {currency}{prediction['amount']:,.2f}", styles["Normal"]))
     if alerts:
         story.append(Spacer(1, 10))
         story.append(Paragraph("Budget Alerts", styles["Heading2"]))
         data = [["Category", "Spent", "Limit", "Usage"]] + [
-            [a["category"], f"₹{a['spent']:,.2f}", f"₹{a['limit']:,.2f}", f"{a['percent']*100:.0f}%"]
+            [a["category"], f"{currency}{a['spent']:,.2f}", f"{currency}{a['limit']:,.2f}", f"{a['percent']*100:.0f}%"]
             for a in alerts
         ]
         table = Table(data, colWidths=[2.2 * inch, 1.2 * inch, 1.2 * inch, 0.8 * inch])
@@ -244,7 +244,7 @@ def build_report_pdf(username, transactions, budgets, goals, health, prediction,
     story.append(Paragraph("Recent Transactions", styles["Heading2"]))
     if not df.empty:
         data = [["Date", "Type", "Category", "Amount"]] + [
-            [str(r["Date"]), r["Type"], r["Category"], f"₹{r['Amount']:,.2f}"]
+            [str(r["Date"]), r["Type"], r["Category"], f"{currency}{r['Amount']:,.2f}"]
             for _, r in df.head(20).iterrows()
         ]
         table = Table(data, repeatRows=1, colWidths=[1.2 * inch, 1.0 * inch, 1.7 * inch, 1.2 * inch])
