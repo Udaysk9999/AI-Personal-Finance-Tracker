@@ -1,48 +1,99 @@
 import streamlit as st
 from datetime import date
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 
 from auth import require_login
-from database import (
-    create_database,
-    add_transaction,
-    get_transactions,
-    get_budgets,
-    get_savings_goals,
-)
+from database import create_database
 from utils import (
     inject_css,
     page_header,
     section_divider,
-    metric_card,
-    empty_state,
     format_currency,
     get_user_currency,
-    INCOME_CATEGORIES,
-    EXPENSE_CATEGORIES,
+    theme_toggle,
+    metric_card,
+    empty_state,
+    badge,
     FINANCE_COLOR_SEQUENCE,
     theme_chart_colors,
+    INCOME_CATEGORIES,
+    EXPENSE_CATEGORIES,
 )
-from finance_tools import budget_alerts
+from finance_tools import budget_alerts, parse_statement, export_transactions
 from finance_ml import suggest_expense_category
 
+# === PAGE CONFIGURATION ===
 st.set_page_config(
-    page_title="AI-Powered Personal Expense Tracker",
+    page_title="AI-Powered Personal Expense Tracking & Budget Advisor",
     page_icon="💰",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-inject_css()
 
+inject_css()
 create_database()
 user_id, username = require_login()
 curr = get_user_currency()
 
+# ==================================================
+# SIDEBAR — Premium Navigation
+# ==================================================
+with st.sidebar:
+    st.markdown(
+        f"""
+        <div style="
+            text-align: center;
+            padding: 20px 10px;
+            background: linear-gradient(135deg, var(--pft-bg-glow-1), transparent);
+            border-radius: 20px;
+            margin-bottom: 24px;
+        ">
+            <h1 style="
+                font-size: 24px;
+                font-weight: 700;
+                color: var(--pft-text-primary);
+                background: var(--pft-title-grad);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                margin: 0;
+            ">💰 {username}</h1>
+            <p style="color: var(--pft-text-secondary); font-size: 13px; margin: 4px 0 0 0;">
+                AI-Powered Expense Tracker
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+
+    # Theme toggle
+    st.markdown("### Appearance")
+    theme_toggle()
+
+    st.divider()
+
+    # Navigation
+    st.markdown("### Navigation")
+    st.page_link("app.py", label="🏠 Dashboard", icon="📊")
+    st.page_link("pages/1_Transaction_Management.py", label="📝 Transactions", icon="💵")
+    st.page_link("pages/3_Budget_Tracking.py", label="🎯 Budgets", icon="💼")
+    st.page_link("pages/4_Monthly_Analytics.py", label="📈 Analytics", icon="📊")
+    st.page_link("pages/5_Savings_Goals.py", label="🏦 Savings Goals", icon="🏦")
+    st.page_link("pages/6_AI_Financial_Advisor.py", label="🤖 AI Advisor", icon="🤖")
+    st.page_link("pages/7_Profile_Settings.py", label="⚙️ Profile", icon="⚙️")
+
+    st.divider()
+    st.caption(f"Version 2.0 • Currency: {curr}")
+
+# ==================================================
+# MAIN CONTENT — Dashboard (Default Home)
+# ==================================================
+
+# Header
 page_header(
-    title="Financial Overview",
-    subtitle=f"Welcome back, {username}. Here is your real-time financial health, budget progress, and spending trends.",
+    "Financial Overview",
+    f"Welcome back, {username}. Here is your real-time financial health, budget progress, and spending trends.",
     badge_text="Live Dashboard",
     icon="📊",
 )
@@ -52,10 +103,6 @@ transactions = get_transactions(user_id)
 budgets = get_budgets(user_id)
 goals = get_savings_goals(user_id)
 chart_colors = theme_chart_colors()
-
-# ==================================================
-# FINANCIAL SUMMARY METRICS
-# ==================================================
 
 if transactions:
     df = pd.DataFrame(
@@ -68,48 +115,47 @@ if transactions:
     total_expenses = float(df[df["Type"] == "Expense"]["Amount"].sum())
     balance = total_income - total_expenses
     savings_rate = ((balance / total_income) * 100) if total_income > 0 else 0.0
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        metric_card("Total Income", format_currency(total_income), accent="emerald", icon="📈")
-    with col2:
-        metric_card("Total Expenses", format_currency(total_expenses), accent="rose", icon="📉")
-    with col3:
-        metric_card(
-            "Current Balance",
-            format_currency(balance),
-            accent="indigo" if balance >= 0 else "rose",
-            icon="💳",
-        )
-    with col4:
-        savings_delta = f"{savings_rate:.1f}%" if total_income > 0 else "0.0%"
-        metric_card(
-            "Savings Rate",
-            savings_delta,
-            delta=f"{savings_rate:+.1f}%" if total_income > 0 else None,
-            accent="cyan" if savings_rate >= 20 else "amber",
-            icon="🎯",
-            help_text="of total income",
-        )
 else:
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        metric_card("Total Income", format_currency(0), accent="emerald", icon="📈")
-    with col2:
-        metric_card("Total Expenses", format_currency(0), accent="rose", icon="📉")
-    with col3:
-        metric_card("Current Balance", format_currency(0), accent="indigo", icon="💳")
-    with col4:
-        metric_card("Savings Rate", "0.0%", accent="cyan", icon="🎯")
+    total_income = 0.0
+    total_expenses = 0.0
+    balance = 0.0
+    savings_rate = 0.0
 
-# ==================================================
-# QUICK ACTIONS
-# ==================================================
+# --- Financial Summary Metrics ---
+st.divider()
+st.header("Financial Summary")
 
-with st.expander("⚡ Quick Add Transaction", expanded=False):
-    t_type = st.selectbox("Transaction Type", ["Expense", "Income"], key="quick_t_type")
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    metric_card("Total Income", format_currency(total_income), accent="emerald", icon="📈")
+with col2:
+    metric_card("Total Expenses", format_currency(total_expenses), accent="rose", icon="📉")
+with col3:
+    metric_card(
+        "Current Balance",
+        format_currency(balance),
+        accent="indigo" if balance >= 0 else "rose",
+        icon="💳",
+    )
+with col4:
+    savings_delta = f"{savings_rate:.1f}%" if total_income > 0 else "0.0%"
+    metric_card(
+        "Savings Rate",
+        savings_delta,
+        delta=f"{savings_rate:+.1f}%" if total_income > 0 else None,
+        accent="cyan" if savings_rate >= 20 else "amber",
+        icon="🎯",
+        help_text="of total income",
+    )
+
+# --- Quick Add Transaction ---
+st.divider()
+st.header("Quick Add Transaction")
+
+with st.expander("⚡ Quick Add", expanded=True):
+    t_type = st.selectbox("Transaction Type", ["Income", "Expense"], key="quick_t_type")
     cat_options = EXPENSE_CATEGORIES if t_type == "Expense" else INCOME_CATEGORIES
-    
+
     with st.form("quick_add_form", clear_on_submit=True):
         q_col1, q_col2 = st.columns(2)
         with q_col1:
@@ -128,12 +174,8 @@ with st.expander("⚡ Quick Add Transaction", expanded=False):
                 st.success("Transaction recorded successfully!")
                 st.rerun()
 
-section_divider()
-
-# ==================================================
-# VISUAL ANALYTICS: TRENDS & BREAKDOWN
-# ==================================================
-
+# --- Visual Analytics: Trends & Breakdown ---
+st.divider()
 if transactions:
     st.subheader("Financial Analytics & Breakdown")
     chart_col1, chart_col2 = st.columns([1.2, 1])
@@ -213,10 +255,7 @@ if transactions:
 
     section_divider()
 
-# ==================================================
-# BUDGETS & SAVINGS GOALS PROGRESS
-# ==================================================
-
+# --- Budgets & Savings Goals Progress ---
 b_col, g_col = st.columns(2)
 
 with b_col:
@@ -284,18 +323,13 @@ with g_col:
             icon="🏦",
         )
 
-section_divider()
-
-# ==================================================
-# RECENT TRANSACTIONS FEED
-# ==================================================
-
+# --- Recent Transactions Feed ---
+st.divider()
 st.subheader("🕒 Recent Transactions")
 
 if transactions:
     recent_df = df.head(5).copy()
     
-    # Styled table display
     for _, row in recent_df.iterrows():
         r_col1, r_col2, r_col3, r_col4 = st.columns([1.2, 1.5, 2.5, 1.5])
         is_income = row["Type"] == "Income"
@@ -315,7 +349,7 @@ if transactions:
                 unsafe_allow_html=True,
             )
         st.markdown("<hr style='margin: 4px 0; border: none; border-top: 1px solid var(--pft-border);' />", unsafe_allow_html=True)
-
+    
     st.caption("Showing 5 most recent transactions. Navigate to Transaction Management for full search, filters, import, and editing.")
 else:
     empty_state(
