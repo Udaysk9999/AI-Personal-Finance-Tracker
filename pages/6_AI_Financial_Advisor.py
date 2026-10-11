@@ -133,10 +133,6 @@ except ImportError:
 # BUILD REAL FINANCIAL DATA SNAPSHOT
 # ==================================================
 
-# ==================================================
-# BUILD REAL FINANCIAL DATA SNAPSHOT
-# ==================================================
-
 ctx = build_financial_context(user_id, curr=curr)
 has_data = ctx.get("has_data", False)
 
