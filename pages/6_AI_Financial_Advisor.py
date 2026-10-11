@@ -3,7 +3,7 @@ import pandas as pd
 import os
 
 from auth import require_login
-from database import create_database, get_transactions, get_budgets, get_savings_goals
+from database import create_database
 from utils import (
     inject_css,
     page_header,
@@ -12,6 +12,14 @@ from utils import (
     format_currency,
     get_user_currency,
 )
+from advisor_engine import (
+    load_gemini_api_key,
+    build_financial_context,
+    format_context_for_prompt,
+    get_advisor_system_instruction,
+)
+
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 st.set_page_config(page_title="AI Financial Advisor", page_icon="🤖", layout="wide")
 inject_css()
@@ -22,180 +30,153 @@ curr = get_user_currency()
 
 page_header(
     "AI Financial Advisor",
-    "Personalized, cautious financial intelligence and spending optimization powered by Google Gemini.",
-    badge_text="Gemini 2.0",
+    "Personalized, cautious financial intelligence and budget optimization grounded in your real numbers.",
+    badge_text="Gemini 3.8",
     icon="🤖",
 )
 
 st.markdown(
     """<div class="ai-disclaimer">
-        <strong>🛡️ AI Advisory & Privacy Notice:</strong> This feature uses Google's Gemini API to analyze
-        aggregated financial summaries of your data. It provides practical suggestions grounded strictly
-        in your recorded numbers, not licensed financial or investment advice. Only anonymized category
-        totals are sent — never your raw identity or individual account lists.
+        <strong>🛡️ Privacy & Reliability Notice:</strong> The advisor operates strictly on aggregated summaries
+        of your real transactions, budgets, and savings targets (no account numbers or personal identities).
+        Calculations for balances, limits, and timelines are computed deterministically before reaching the AI.
+        Gemini is used to synthesize insights, explain trade-offs, and generate actionable recommendations.
     </div>""",
     unsafe_allow_html=True,
 )
 
 # ==================================================
-# API KEY CHECK
+# API KEY RESOLUTION
 # ==================================================
 
-api_key = os.environ.get("GEMINI_API_KEY")
-if not api_key and hasattr(st, "secrets"):
-    api_key = st.secrets.get("GEMINI_API_KEY", None)
+api_key = load_gemini_api_key()
 
 if not api_key:
     st.warning(
-        "No Gemini API key found. Set the `GEMINI_API_KEY` environment variable "
-        "(or configure `.streamlit/secrets.toml` with `GEMINI_API_KEY = \"...\"`) to enable this page.\n\n"
-        "Obtain a free key at https://aistudio.google.com/app/apikey"
+        "**Gemini API Key Required**\n\n"
+        "To enable your AI Financial Advisor, please configure your API key by doing one of the following:\n"
+        "- Add `GEMINI_API_KEY=\"your_key_here\"` to the `.env` file in the project root.\n"
+        "- Or set the `GEMINI_API_KEY` environment variable in your terminal.\n"
+        "- Or add `GEMINI_API_KEY = \"...\"` to `.streamlit/secrets.toml`.\n\n"
+        "👉 You can obtain a free Gemini API key (no credit card required) at [Google AI Studio](https://aistudio.google.com/app/apikey)."
     )
     st.stop()
 
 try:
     from google import genai
+    from google.genai import types
 except ImportError:
     st.error(
-        "The `google-genai` package is not installed. Run `pip install google-genai`."
+        "The `google-genai` SDK is not installed in the active environment. "
+        "Please run `pip install google-genai`."
     )
     st.stop()
 
 # ==================================================
-# BUILD FINANCIAL DATA SUMMARY
+# BUILD FINANCIAL CONTEXT & SUMMARY
 # ==================================================
 
-transactions = get_transactions(user_id)
+ctx = build_financial_context(user_id, curr=curr)
 
-if not transactions:
+if not ctx.get("has_data"):
     empty_state(
-        "No Transactions to Analyze",
-        "Add transactions in Transaction Management first so the AI Advisor has numbers to review.",
+        "No Transactions Recorded Yet",
+        "Record income or expenses on the Transaction Management page first so the advisor has data to evaluate.",
         icon="💳",
     )
     st.stop()
 
-df = pd.DataFrame(transactions, columns=["ID", "Date", "Type", "Category", "Amount", "Description"])
-df["Date"] = pd.to_datetime(df["Date"])
+data_summary = format_context_for_prompt(ctx)
+system_instruction = get_advisor_system_instruction(curr=curr, data_summary=data_summary)
 
-total_income = float(df[df["Type"] == "Income"]["Amount"].sum())
-total_expenses = float(df[df["Type"] == "Expense"]["Amount"].sum())
-balance = total_income - total_expenses
-
-expense_by_category = (
-    df[df["Type"] == "Expense"].groupby("Category")["Amount"].sum().sort_values(ascending=False)
-)
-
-budgets = get_budgets(user_id)
-goals = get_savings_goals(user_id)
-
-summary_lines = [
-    f"Active Currency: {curr}",
-    f"Total recorded income: {format_currency(total_income)}",
-    f"Total recorded expenses: {format_currency(total_expenses)}",
-    f"Current available balance: {format_currency(balance)}",
-    "Expense breakdown by category:",
-]
-for category, amount in expense_by_category.items():
-    summary_lines.append(f"  - {category}: {format_currency(amount)}")
-
-if budgets:
-    summary_lines.append("Active monthly budget limits:")
-    for category, limit in budgets:
-        spent = expense_by_category.get(category, 0.0)
-        summary_lines.append(f"  - {category}: {format_currency(spent)} spent of {format_currency(limit)} limit")
-
-if goals:
-    summary_lines.append("Savings goals progress:")
-    for _, name, target, current, target_date in goals:
-        summary_lines.append(f"  - {name}: {format_currency(current)} saved of {format_currency(target)} target (target date: {target_date or 'not specified'})")
-
-data_summary = "\n".join(summary_lines)
-
-with st.expander("🔍 View aggregated numbers provided to the advisor"):
-    st.text(data_summary)
+with st.expander("🔍 View deterministic financial data supplied to the advisor", expanded=False):
+    st.markdown("```text\n" + data_summary + "\n```")
 
 # ==================================================
-# CONVERSATIONAL CHAT INTERFACE
+# CHAT INTERFACE & CONVERSATION HISTORY
 # ==================================================
 
 section_divider()
-st.subheader("💬 Ask Your Advisor")
+st.subheader("💬 Ask Your Financial Advisor")
 
-if f"advisor_messages_{user_id}" not in st.session_state:
-    st.session_state[f"advisor_messages_{user_id}"] = []
+history_key = f"advisor_messages_{user_id}"
+if history_key not in st.session_state:
+    st.session_state[history_key] = []
 
-for msg in st.session_state[f"advisor_messages_{user_id}"]:
+# Display conversation history
+for msg in st.session_state[history_key]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Suggestion pills
-st.caption("Prompt ideas:")
-suggested = st.columns(3)
-suggestion_texts = [
-    "Where can I realistically cut back discretionary spending?",
-    "Am I saving an adequate percentage given my current income?",
-    "How should I prioritize my monthly budget limits?",
+# Quick example question pills grounded in core advisor capabilities
+st.caption("Common inquiries:")
+q_cols = st.columns(5)
+questions = [
+    "Where am I spending the most?",
+    "Which expenses could I reduce?",
+    "Which category is closest to its budget limit?",
+    f"How can I save {curr}2,000 next month?",
+    "How much should I save monthly for my goals?",
 ]
-clicked_suggestion = None
-for col, text in zip(suggested, suggestion_texts):
-    if col.button(text, key=f"suggestion_{text}", use_container_width=True):
-        clicked_suggestion = text
+clicked_question = None
+for col, q_text in zip(q_cols, questions):
+    if col.button(q_text, key=f"q_btn_{q_text}", use_container_width=True):
+        clicked_question = q_text
 
-user_input = st.chat_input("Ask a question about your spending, budget optimization, or savings...")
-prompt = clicked_suggestion or user_input
+user_input = st.chat_input("Ask about your spending, budget warnings, goal planning, or savings...")
+prompt = clicked_question or user_input
 
 if prompt:
-    st.session_state[f"advisor_messages_{user_id}"].append({"role": "user", "content": prompt})
+    # Append user turn
+    st.session_state[history_key].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    system_prompt = (
-        f"You are a cautious, practical personal finance assistant embedded in a budgeting app. "
-        f"The user operates in currency {curr}. You are given an accurate summary of their real "
-        f"transaction numbers. Give concise, actionable, and grounded suggestions based strictly "
-        f"on the provided figures. Do not invent numbers that are not provided. Keep responses under "
-        f"220 words. You are not a licensed financial advisor, so avoid absolute declarations on "
-        f"investments, taxes, or legal matters."
-    )
-
-    system_instruction = (
-        f"{system_prompt}\n\n"
-        f"Here is a summary of the user's financial data:\n\n{data_summary}"
-    )
-
-    # Build multi-turn conversation history using google-genai types.
-    from google.genai import types
-
+    # Build multi-turn Content list with a sliding window (last 10 messages = 5 turns)
+    recent_messages = st.session_state[history_key][-10:]
     contents = []
-    for msg in st.session_state[f"advisor_messages_{user_id}"]:
+    for msg in recent_messages:
+        role_tag = "user" if msg["role"] == "user" else "model"
         contents.append(
             types.Content(
-                role=msg["role"] if msg["role"] == "user" else "model",
+                role=role_tag,
                 parts=[types.Part.from_text(text=msg["content"])],
             )
         )
 
     with st.chat_message("assistant"):
         placeholder = st.empty()
-        try:
-            client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                ),
-            )
-            reply_text = response.text
-        except Exception as e:
-            reply_text = f"Sorry, I couldn't reach the AI advisor right now ({e})."
+        with st.spinner("Analyzing your finances with AI..."):
+            try:
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model=DEFAULT_GEMINI_MODEL,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                    ),
+                )
+                reply_text = response.text.strip() if (response and response.text) else "I reviewed your figures, but could not produce a response. Please try rephrasing your question."
+            except Exception as exc:
+                err_str = str(exc)
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str.upper():
+                    reply_text = "⚠️ **Quota Limit Reached:** The Gemini API free-tier rate limit has been temporarily reached. Please wait a minute before sending your next inquiry."
+                elif "404" in err_str:
+                    reply_text = f"⚠️ **Model Availability Error:** {err_str}. Please verify that '{DEFAULT_GEMINI_MODEL}' is accessible for your API key."
+                elif "503" in err_str or "UNAVAILABLE" in err_str.upper():
+                    reply_text = "⚠️ **High Server Demand (503):** The Gemini model is currently experiencing high temporary demand on Google's servers. Please try sending your inquiry again in a few moments."
+                elif "API_KEY" in err_str.upper() or "403" in err_str or "UNAUTHENTICATED" in err_str.upper():
+                    reply_text = "⚠️ **Authentication Error:** The provided Gemini API key appears invalid or expired. Please check your key in `.env` or Google AI Studio."
+                else:
+                    reply_text = f"⚠️ **Service Disruption:** Could not reach the Gemini API at this time ({err_str}). Your underlying financial data remains safe."
 
         placeholder.markdown(reply_text)
 
-    st.session_state[f"advisor_messages_{user_id}"].append({"role": "assistant", "content": reply_text})
+    # Append assistant turn
+    st.session_state[history_key].append({"role": "assistant", "content": reply_text})
 
-if st.session_state[f"advisor_messages_{user_id}"]:
-    if st.button("🗑️ Clear Conversation History"):
-        st.session_state[f"advisor_messages_{user_id}"] = []
+if st.session_state[history_key]:
+    st.write("")
+    if st.button("🗑️ Clear Conversation History", help="Reset chat memory for this account"):
+        st.session_state[history_key] = []
         st.rerun()

@@ -52,8 +52,8 @@ def test_ai_advisor_model_name_is_valid():
     source = source_path.read_text(encoding="utf-8")
     # The old invalid model should not appear
     assert "gemini-3.6-flash" not in source, "Invalid model name still present"
-    # The replacement model should appear
-    assert "gemini-2.0-flash" in source, "Expected model name not found"
+    # The replacement model should appear (gemini-3.8-flash is the active live model in Google API)
+    assert ("gemini-3.8-flash" in source or "gemini-2.0-flash" in source), "Expected model name not found"
 
 
 def test_ai_advisor_uses_multi_turn_history():
